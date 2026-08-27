@@ -4,7 +4,11 @@ import EmptyState from './components/EmptyState';
 import SplitView from './components/SplitView';
 import FloatingControls from './components/FloatingControls';
 import KeyboardShortcutsModal from './components/KeyboardShortcutsModal';
+import ExtractionLoader from './components/ExtractionLoader';
+import ErrorAlert from './components/ErrorAlert';
 import { sampleDocument } from './data/sampleDocument';
+import { extractTextFromPDF } from './utils/pdfExtractor';
+import { extractTextFromImage } from './utils/ocrExtractor';
 
 export default function App() {
   const [currentDoc, setCurrentDoc] = useState(null);
@@ -13,11 +17,18 @@ export default function App() {
   const [playbackSpeed, setPlaybackSpeed] = useState(1.0);
   const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
 
-  // Load sample document on initial visit or demo button
+  // Extraction & OCR state
+  const [isExtracting, setIsExtracting] = useState(false);
+  const [extractionProgress, setExtractionProgress] = useState({ stage: '', percent: 0 });
+  const [currentFileProcessing, setCurrentFileProcessing] = useState(null);
+  const [errorMessage, setErrorMessage] = useState(null);
+
+  // Load sample document for instant preview
   const handleLoadSample = () => {
     setCurrentDoc(sampleDocument);
     setActiveSentenceIndex(0);
     setIsPlaying(false);
+    setErrorMessage(null);
   };
 
   // Reset / Change document
@@ -25,30 +36,47 @@ export default function App() {
     setCurrentDoc(null);
     setActiveSentenceIndex(0);
     setIsPlaying(false);
+    setErrorMessage(null);
   };
 
-  // Upload handler scaffold for Phase 1
-  const handleFileUpload = (file) => {
+  // Real File Upload & OCR Extraction Pipeline (Phase 2)
+  const handleFileUpload = async (file) => {
     if (!file) return;
-    
-    // For Phase 1 scaffold, parse file name and provide a simulated document shell
-    // In Phase 2, PDF.js & Tesseract.js will do real OCR extraction
-    const simulatedDoc = {
-      title: file.name,
-      totalPages: 1,
-      currentPage: 1,
-      sentences: [
-        `Loaded "${file.name}" into the EyesUp reading queue.`,
-        "In Phase 1, the design system, split-view layout, and tactile controls are fully established.",
-        "Phase 2 will plug in the PDF.js and Tesseract.js OCR extraction pipeline directly into this shell.",
-        "You can test sentence navigation, keyboard shortcuts, and arm's-length visibility right now."
-      ],
-      rawText: `Loaded "${file.name}". Document shell is ready for Phase 2 OCR pipeline.`
-    };
 
-    setCurrentDoc(simulatedDoc);
-    setActiveSentenceIndex(0);
-    setIsPlaying(false);
+    setCurrentFileProcessing(file);
+    setIsExtracting(true);
+    setExtractionProgress({ stage: 'Analyzing file format...', percent: 10 });
+    setErrorMessage(null);
+
+    try {
+      const fileName = file.name || '';
+      const isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(fileName);
+      const isImg = file.type.startsWith('image/') || /\.(png|jpe?g|webp|bmp)$/i.test(fileName);
+
+      let resultDoc;
+
+      if (isPdf) {
+        resultDoc = await extractTextFromPDF(file, (p) => setExtractionProgress(p));
+      } else if (isImg) {
+        resultDoc = await extractTextFromImage(file, (p) => setExtractionProgress(p));
+      } else {
+        throw new Error("Unsupported file format. Please upload a PDF document or a photo (JPG/PNG).");
+      }
+
+      if (!resultDoc || !resultDoc.sentences || resultDoc.sentences.length === 0) {
+        throw new Error("No readable text could be extracted from this document.");
+      }
+
+      setCurrentDoc(resultDoc);
+      setActiveSentenceIndex(0);
+      setIsPlaying(false);
+    } catch (err) {
+      console.error("Extraction error in App:", err);
+      setErrorMessage(err.message || "Failed to process document.");
+    } finally {
+      setIsExtracting(false);
+      setCurrentFileProcessing(null);
+    }
   };
 
   // Sentence Navigation Handlers
@@ -65,7 +93,6 @@ export default function App() {
   }, [currentDoc]);
 
   const handleRestartSentence = useCallback(() => {
-    // Restarts playback of current sentence
     setIsPlaying(true);
   }, []);
 
@@ -104,6 +131,7 @@ export default function App() {
         setIsShortcutsOpen((prev) => !prev);
       } else if (e.code === 'Escape') {
         setIsShortcutsOpen(false);
+        setErrorMessage(null);
       }
     };
 
@@ -155,6 +183,25 @@ export default function App() {
           onTogglePlay={handleTogglePlay}
           onNextSentence={handleNextSentence}
           onPrevSentence={handlePrevSentence}
+        />
+      )}
+
+      {/* Phase 2: On-Brand Extraction & OCR Loading Overlay */}
+      {isExtracting && (
+        <ExtractionLoader
+          progress={extractionProgress}
+          fileName={currentFileProcessing?.name}
+          fileType={currentFileProcessing?.type}
+          onCancel={() => setIsExtracting(false)}
+        />
+      )}
+
+      {/* Phase 2: Error Notification Modal */}
+      {errorMessage && (
+        <ErrorAlert
+          error={errorMessage}
+          onClose={() => setErrorMessage(null)}
+          onRetry={() => currentFileProcessing && handleFileUpload(currentFileProcessing)}
         />
       )}
 

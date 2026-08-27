@@ -10,8 +10,8 @@
 | Phase | Description | Status | Commit / Notes |
 | :--- | :--- | :---: | :--- |
 | **Phase 1** | **Design System + Scaffold** | ✅ **Completed** | Commit `8309306` — Full warm notebook theme, Split View, arm's-length card, floating controls, keyboard shortcuts |
-| **Phase 2** | **OCR Pipeline** | ⏳ *Next* | PDF.js (text PDFs) + Tesseract.js (photos/scanned pages) + on-brand paper loader |
-| **Phase 3** | **Text-to-Speech + Live Highlighting** | 📋 *Queued* | Web Speech API sentence-by-sentence reading + boundary-synced highlight |
+| **Phase 2** | **OCR Pipeline** | ✅ **Completed** | Commit `Phase 2` — PDF.js digital extraction + Tesseract.js photo OCR + canvas pre-processing + fountain-pen loader |
+| **Phase 3** | **Text-to-Speech + Live Highlighting** | ⏳ *Next* | Web Speech API sentence-by-sentence reading + boundary-synced highlight |
 | **Phase 4** | **Hands-Free Interaction** | 📋 *Queued* | Native key listeners (`Space`, `Arrows`, `R`), touch optimization, floating mini-player |
 | **Phase 5** | **Micro-Interactions & Motion** | 📋 *Queued* | Signature sentence transition animation + `prefers-reduced-motion` |
 | **Phase 6** | **Responsiveness & A11y Polish** | 📋 *Queued* | Propped tablet view, arm's-length readability, contrast & focus checks |
@@ -35,24 +35,37 @@
   - Handwritten Accents: `Caveat`
   - Badges & Keyboard Shortcuts: `JetBrains Mono`
 - **Implemented Components**:
-  - `Header.jsx`: Top navigation, pen badge, document title pill, shortcut modal launcher, demo loader
-  - `EmptyState.jsx`: Clean notebook empty state with tactile dashed dropzone and 3 core value cards
-  - `UploadZone.jsx`: Drag-and-drop target accepting `.pdf`, `.png`, `.jpg`, `.jpeg`, `.webp`
-  - `SplitView.jsx`: Desktop & tablet two-column layout
-  - `DocumentViewer.jsx`: Left notebook sheet showing formatted text chunks, font size zooming (`14px` - `28px`), and sentence index badges
-  - `PlaybackPanel.jsx`: Right focus card with huge arm's-length current sentence display, progress bar, transport controls, and reading rate buttons (`0.8x`, `1.0x`, `1.25x`, `1.5x`)
-  - `FloatingControls.jsx`: Sticky bottom mini-bar ensuring controls remain accessible while scrolling
-  - `KeyboardShortcutsModal.jsx`: Modal displaying hands-free keys (`Space`, `←`, `→`, `R`, `?`)
-  - `sampleDocument.js`: Pre-loaded biology chapter for instant testing without file upload
+  - `Header.jsx`, `EmptyState.jsx`, `UploadZone.jsx`, `SplitView.jsx`, `DocumentViewer.jsx`, `PlaybackPanel.jsx`, `FloatingControls.jsx`, `KeyboardShortcutsModal.jsx`, `sampleDocument.js`
+
+### ✅ Phase 2 — OCR Pipeline (Completed)
+- **Text & Sentence Tokenization Engine** (`src/utils/textCleaner.js`):
+  - Strips broken line-wrap hyphens across newlines (e.g. `trans- \n mission` -> `transmission`)
+  - Normalizes quotes and excess whitespace
+  - Protects decimals (`3.14`) and common scientific/academic abbreviations (`dr.`, `fig.`, `eq.`, `vs.`, `e.g.`, `i.e.`)
+  - Chunks text into clean, digestible sentence strings for the speech engine
+- **PDF Extraction Engine** (`src/utils/pdfExtractor.js`):
+  - Powered by `pdfjs-dist` with CDN worker fallback
+  - Iterates multi-page PDFs, calculates geometric line coordinates, and extracts clean selectable text
+  - Detects scanned image PDFs and triggers appropriate OCR recommendations
+- **Photo & Scanned OCR Engine** (`src/utils/ocrExtractor.js`):
+  - Powered by `tesseract.js` with client-side OCR worker
+  - Canvas-based image pre-processing (downsampling, grayscale luminosity weighting, contrast expansion) to handle low-light phone photos
+  - Real-time recognition percentage logging (0-100%)
+- **Animated Fountain-Pen Loading State** (`src/components/ExtractionLoader.jsx`):
+  - Replaces generic spinners with an on-brand notebook sheet animation
+  - Animated fountain-pen nib gliding across ruled paper as the progress bar fills with highlighter yellow
+  - Shows file type, real-time stage description, percentage badge, and cancel action
+- **Error Handling Modal** (`src/components/ErrorAlert.jsx`):
+  - Friendly alerts for blurry images, empty scans, or unsupported files with retry action
 - **Build & Verification**:
-  - `npm run build`: Production bundle compiled successfully with Vite (0 errors)
+  - `npm run build`: Production bundle compiled in 4.71s with 0 errors
   - Dev server running at `http://127.0.0.1:5173/`
 
 ---
 
-## 🎯 Next Step: Phase 2 (OCR Pipeline)
-- [ ] Install and configure `pdfjs-dist` for direct text extraction from digital PDFs
-- [ ] Install and configure `tesseract.js` for client-side OCR on photos and scanned images
-- [ ] Build canvas image pre-processor (grayscale, contrast boost, orientation check)
-- [ ] Implement an on-brand notebook loader state with progress bar (replacing generic spinners)
-- [ ] Integrate error handling for blurry photos or empty pages
+## 🎯 Next Step: Phase 3 (Text-to-Speech + Live Highlighting)
+- [ ] Connect Web Speech API (`SpeechSynthesis`) with sentence-by-sentence reading
+- [ ] Sync active text highlight with speech boundaries and sentence progression
+- [ ] Implement full play, pause, resume, restart, and speed controls (0.5x - 2.0x)
+- [ ] Add system voice selector (Natural/High-quality OS voices)
+- [ ] Implement auto-scroll to keep active highlighted sentence in viewport
