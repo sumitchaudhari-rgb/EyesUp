@@ -1,0 +1,71 @@
+import React from 'react';
+import { BookOpen, Command, Volume2, Sparkles, FileText, Upload } from 'lucide-react';
+
+export default function Header({ 
+  hasDoc, 
+  docTitle, 
+  onResetDoc, 
+  onOpenShortcuts,
+  onLoadSample 
+}) {
+  return (
+    <header className="sticky top-0 z-30 bg-cream-50/95 backdrop-blur-md border-b border-cream-300 px-4 sm:px-6 py-3 transition-all">
+      <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
+        {/* Brand identity */}
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-indigo-pen flex items-center justify-center text-cream-50 shadow-md shadow-indigo-pen/10 ring-2 ring-cream-300">
+            <span className="font-serif font-bold text-xl tracking-tighter">E<span className="text-highlighter">·</span>U</span>
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h1 className="font-serif font-bold text-xl tracking-tight text-indigo-deep">EyesUp</h1>
+              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-cream-200 text-indigo-pen/80 border border-cream-400">
+                Phase 1 Shell
+              </span>
+            </div>
+            <p className="text-xs text-indigo-muted hidden sm:block font-sans">
+              Keep your pen on paper & eyes on your notes
+            </p>
+          </div>
+        </div>
+
+        {/* Current Document Pill / Actions */}
+        <div className="flex items-center gap-2 sm:gap-3">
+          {hasDoc ? (
+            <div className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-cream-200/80 border border-cream-300 text-xs font-medium text-indigo-pen max-w-xs truncate">
+              <FileText className="w-3.5 h-3.5 text-indigo-muted flex-shrink-0" />
+              <span className="truncate">{docTitle}</span>
+              <button 
+                onClick={onResetDoc}
+                className="ml-1 text-indigo-muted hover:text-margin-red text-[11px] underline underline-offset-2 flex-shrink-0"
+              >
+                Change
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={onLoadSample}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-highlighter-glow hover:bg-highlighter text-indigo-deep text-xs font-semibold border border-highlighter-border transition-all shadow-sm active:scale-95"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-indigo-deep" />
+              <span>Try Sample Text</span>
+            </button>
+          )}
+
+          {/* Keyboard Shortcuts Trigger */}
+          <button
+            onClick={onOpenShortcuts}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-cream-200 hover:bg-cream-300 text-indigo-pen text-xs font-medium border border-cream-400 transition-colors"
+            title="Keyboard shortcuts (Space, Arrow keys)"
+          >
+            <Command className="w-3.5 h-3.5 text-indigo-muted" />
+            <span className="hidden sm:inline">Shortcuts</span>
+            <kbd className="hidden sm:inline-block px-1.5 py-0.5 text-[10px] font-mono bg-cream-50 rounded border border-cream-400 text-indigo-pen">
+              ?
+            </kbd>
+          </button>
+        </div>
+      </div>
+    </header>
+  );
+}

@@ -1,0 +1,57 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    background-color: #FAF6EE;
+    color: #1E293B;
+  }
+}
+
+/* Custom scrollbars matching notebook aesthetic */
+::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+
+::-webkit-scrollbar-track {
+  background: #F4ECE1;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #CBB79F;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #A99379;
+}
+
+/* Notebook ruled paper aesthetic */
+.notebook-ruled {
+  background-image: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 31px,
+    rgba(226, 217, 200, 0.45) 31px,
+    rgba(226, 217, 200, 0.45) 32px
+  );
+  line-height: 32px;
+}
+
+/* Highlighter active sentence sweep */
+.active-sentence-highlight {
+  background: linear-gradient(120deg, #FEF08A 0%, #FDE047 100%);
+  box-shadow: 0 0 0 3px #FEF08A, 0 2px 4px rgba(234, 179, 8, 0.15);
+  border-radius: 4px;
+  position: relative;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Subtle focus outline for keyboard accessibility */
+:focus-visible {
+  outline: 2px solid #1E293B;
+  outline-offset: 2px;
+}
