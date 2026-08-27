@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Volume2, Mic, Play, Check, Clock, PenTool, MessageSquare, Sparkles } from 'lucide-react';
+import { X, Volume2, Mic, Play, Check, Clock, PenTool, MessageSquare, Sparkles, User, UserCheck } from 'lucide-react';
 import { speechEngine } from '../utils/speechEngine';
 
 const SPEED_PRESETS = [0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0];
@@ -11,11 +11,6 @@ const PAUSE_PRESETS = [
   { label: '1.2s (Dictation)', ms: 1200 },
   { label: '1.5s (Slow)', ms: 1500 }
 ];
-
-const GENDER_BADGE = {
-  Female: { cls: 'bg-pink-50 text-pink-800 border-pink-200' },
-  Male:   { cls: 'bg-blue-50 text-blue-800 border-blue-200' }
-};
 
 export default function VoiceSettingsModal({
   isOpen,
@@ -30,6 +25,7 @@ export default function VoiceSettingsModal({
   onToggleSpeakPunctuation
 }) {
   const [voices, setVoices] = useState([]);
+  const [genderFilter, setGenderFilter] = useState('all'); // 'all' | 'Male' | 'Female'
   const [testingVoiceURI, setTestingVoiceURI] = useState(null);
 
   useEffect(() => {
@@ -43,20 +39,24 @@ export default function VoiceSettingsModal({
 
   const currentSelectedURI = selectedVoiceURI || speechEngine.selectedVoiceURI || (voices[0]?.voiceURI ?? '');
 
+  const filteredVoices = voices.filter(v => {
+    if (genderFilter === 'all') return true;
+    return v.gender === genderFilter;
+  });
+
   const handleTestVoice = (e, voice) => {
     e.stopPropagation();
     setTestingVoiceURI(voice.voiceURI);
     
-    // Select this voice in engine and parent state
     speechEngine.setVoice(voice.voiceURI);
     onSelectVoice(voice.voiceURI);
     speechEngine.setRate(playbackSpeed);
-    speechEngine.setWordPauseMs(0); // Smooth test playback
+    speechEngine.setWordPauseMs(0);
     speechEngine.setSpeakPunctuation(speakPunctuation);
 
-    const testText = voice.lang?.startsWith('hi')
-      ? 'लिखिए: तंत्रिका कोशिकाएं संदेश पहुंचाती हैं।'
-      : 'Write this: Neurons communicate via synapses.';
+    const testText = voice.gender === 'Male'
+      ? (voice.lang?.startsWith('hi') ? 'नमस्कार, यह पुरुष स्वर है। लिखिए: तंत्रिका तंत्र।' : 'Hello, this is the male voice. Write this: Action potentials fire across synapses.')
+      : (voice.lang?.startsWith('hi') ? 'नमस्कार, यह महिला स्वर है। लिखिए: तंत्रिका तंत्र।' : 'Hello, this is the female voice. Write this: Action potentials fire across synapses.');
 
     speechEngine.speak(testText, -1);
 
@@ -83,10 +83,10 @@ export default function VoiceSettingsModal({
               <div className="flex items-center gap-2">
                 <h3 className="font-serif font-bold text-xl text-indigo-deep">Voice & Dictation</h3>
                 <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-100 text-emerald-900 border border-emerald-300 flex items-center gap-1">
-                  <Sparkles className="w-2.5 h-2.5" /> Neural + Indian Voices
+                  <Sparkles className="w-2.5 h-2.5" /> Neural Voices
                 </span>
               </div>
-              <p className="text-xs text-indigo-muted">Select your preferred Indian English or regional voice</p>
+              <p className="text-xs text-indigo-muted">Switch between Indian Male & Female dictation voices</p>
             </div>
           </div>
           <button
@@ -169,20 +169,60 @@ export default function VoiceSettingsModal({
             </div>
           </div>
 
-          {/* Voice Selection List */}
-          <div className="space-y-1.5">
-            <label className="text-xs font-mono uppercase tracking-wider text-indigo-muted font-semibold block mb-1">
-              Select Indian Voice ({voices.length})
-            </label>
+          {/* Voice Selection List with Gender Filter Tabs */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-mono uppercase tracking-wider text-indigo-muted font-semibold">
+                Available Voices ({filteredVoices.length})
+              </label>
 
-            {voices.length === 0 ? (
+              {/* Gender Filter Tabs */}
+              <div className="flex items-center gap-1 bg-cream-200 p-0.5 rounded-xl border border-cream-300">
+                <button
+                  type="button"
+                  onClick={() => setGenderFilter('all')}
+                  className={`px-2.5 py-0.5 rounded-lg text-[10px] font-bold transition-all ${
+                    genderFilter === 'all'
+                      ? 'bg-indigo-pen text-cream-50 shadow-sm'
+                      : 'text-indigo-muted hover:text-indigo-deep'
+                  }`}
+                >
+                  All
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setGenderFilter('Male')}
+                  className={`px-2.5 py-0.5 rounded-lg text-[10px] font-bold transition-all flex items-center gap-1 ${
+                    genderFilter === 'Male'
+                      ? 'bg-blue-600 text-white shadow-sm'
+                      : 'text-blue-900/70 hover:text-blue-900'
+                  }`}
+                >
+                  👨 Male
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setGenderFilter('Female')}
+                  className={`px-2.5 py-0.5 rounded-lg text-[10px] font-bold transition-all flex items-center gap-1 ${
+                    genderFilter === 'Female'
+                      ? 'bg-pink-600 text-white shadow-sm'
+                      : 'text-pink-900/70 hover:text-pink-900'
+                  }`}
+                >
+                  👩 Female
+                </button>
+              </div>
+            </div>
+
+            {filteredVoices.length === 0 ? (
               <div className="p-4 rounded-xl bg-cream-100 border border-cream-300 text-center text-xs text-indigo-muted">
-                Loading Indian voices...
+                No voices found matching this filter.
               </div>
             ) : (
-              voices.map((voice) => {
+              filteredVoices.map((voice) => {
                 const isSelected = currentSelectedURI === voice.voiceURI;
                 const isPlayingThis = testingVoiceURI === voice.voiceURI;
+                const isMale = voice.gender === 'Male';
 
                 return (
                   <div
@@ -190,14 +230,18 @@ export default function VoiceSettingsModal({
                     onClick={() => handleSelect(voice.voiceURI)}
                     className={`flex items-center justify-between p-3 rounded-2xl border cursor-pointer transition-all duration-150 ${
                       isSelected
-                        ? 'bg-highlighter-active border-indigo-pen/40 ring-2 ring-highlighter shadow-sm'
+                        ? isMale 
+                          ? 'bg-blue-50 border-blue-400 ring-2 ring-blue-300 shadow-sm'
+                          : 'bg-highlighter-active border-indigo-pen/40 ring-2 ring-highlighter shadow-sm'
                         : 'bg-cream-100 hover:bg-cream-200/80 border-cream-300'
                     }`}
                   >
                     <div className="flex items-center gap-3 min-w-0">
                       <div
                         className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold transition-colors ${
-                          isSelected ? 'bg-indigo-pen text-cream-50' : 'bg-cream-200 text-indigo-muted'
+                          isSelected 
+                            ? isMale ? 'bg-blue-600 text-white' : 'bg-indigo-pen text-cream-50'
+                            : 'bg-cream-200 text-indigo-muted'
                         }`}
                       >
                         {isSelected ? <Check className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
@@ -206,23 +250,14 @@ export default function VoiceSettingsModal({
                         <div className="flex items-center gap-1.5 flex-wrap">
                           <span className="text-xs font-semibold text-indigo-deep truncate">{voice.name}</span>
                           <span
-                            className={`px-1.5 py-0.5 rounded text-[10px] font-mono border ${
-                              voice.type === 'neural'
-                                ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                                : 'bg-amber-50 text-amber-800 border-amber-200'
+                            className={`px-1.5 py-0.5 rounded text-[10px] font-mono border font-semibold ${
+                              isMale
+                                ? 'bg-blue-100 text-blue-900 border-blue-300'
+                                : 'bg-pink-100 text-pink-900 border-pink-300'
                             }`}
                           >
-                            {voice.quality || 'Neural'}
+                            {isMale ? '👨 Male Voice' : '👩 Female Voice'}
                           </span>
-                          {voice.gender && (
-                            <span
-                              className={`px-1.5 py-0.5 rounded text-[10px] font-mono border ${
-                                (GENDER_BADGE[voice.gender] || GENDER_BADGE.Female).cls
-                              }`}
-                            >
-                              {voice.gender}
-                            </span>
-                          )}
                           <span className="text-[10px] font-mono text-indigo-muted">{voice.lang}</span>
                         </div>
                       </div>
@@ -231,14 +266,16 @@ export default function VoiceSettingsModal({
                     <button
                       type="button"
                       onClick={(e) => handleTestVoice(e, voice)}
-                      className={`px-2.5 py-1 rounded-lg text-xs font-medium border flex items-center gap-1 flex-shrink-0 transition-colors ${
+                      className={`px-3 py-1.5 rounded-xl text-xs font-semibold border flex items-center gap-1 flex-shrink-0 transition-all active:scale-95 ${
                         isPlayingThis
-                          ? 'bg-indigo-pen text-cream-50 border-indigo-pen animate-pulse'
+                          ? isMale
+                            ? 'bg-blue-600 text-white border-blue-600 animate-pulse shadow-md'
+                            : 'bg-indigo-pen text-cream-50 border-indigo-pen animate-pulse shadow-md'
                           : 'bg-cream-200 hover:bg-cream-300 text-indigo-pen border-cream-400'
                       }`}
                     >
                       <Play className="w-3 h-3 fill-current" />
-                      <span>{isPlayingThis ? 'Playing…' : 'Test'}</span>
+                      <span>{isPlayingThis ? 'Testing…' : 'Test'}</span>
                     </button>
                   </div>
                 );

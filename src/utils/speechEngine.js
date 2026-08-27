@@ -16,9 +16,11 @@ const NEURAL_VOICES = [
 ];
 
 /**
- * EyesUp Speech Engine — Dual Mode (Microsoft Neural TTS + System Speech Fallback)
- * 
- * Guarantees voice switching works 100% of the time across online and offline environments.
+ * EyesUp Speech Engine
+ * Features:
+ *  - Accurate Male / Female voice rendering and pitch modulation
+ *  - True Neural Edge TTS synthesis with boundary timing
+ *  - High-precision Browser SpeechSynthesis fallback with gender timbre adjustment
  */
 class SpeechEngine {
   constructor() {
@@ -57,22 +59,30 @@ class SpeechEngine {
     if (typeof window !== 'undefined' && window.speechSynthesis) {
       const loadBrowserVoices = () => {
         const all = window.speechSynthesis.getVoices() || [];
-        this._browserVoices = all.filter(v => {
+        this._browserVoices = all.map(v => {
           const l = (v.lang || '').toLowerCase();
           const n = (v.name || '').toLowerCase();
-          return l.includes('-in') || l.includes('_in') || l.startsWith('hi') || l.startsWith('ta') ||
-                 l.startsWith('te') || l.startsWith('mr') || l.startsWith('bn') || l.startsWith('kn') ||
-                 n.includes('india') || n.includes('hindi') || n.includes('heera') || n.includes('ravi');
-        }).map(v => ({
-          voiceURI: `browser:${v.voiceURI || v.name}`,
-          name: `${v.name} (System)`,
-          lang: v.lang,
-          languageCode: v.lang,
-          gender: (v.name.toLowerCase().includes('female') || v.name.toLowerCase().includes('heera') || v.name.toLowerCase().includes('kalpana')) ? 'Female' : 'Male',
-          quality: 'System',
-          type: 'browser',
-          nativeVoice: v
-        }));
+
+          let gender = 'Female';
+          if (n.includes('male') || n.includes('ravi') || n.includes('david') || n.includes('george') || 
+              n.includes('mark') || n.includes('hemant') || n.includes('madhur') || n.includes('prabhat')) {
+            gender = 'Male';
+          } else if (n.includes('female') || n.includes('heera') || n.includes('zira') || n.includes('kalpana') || 
+                     n.includes('swara') || n.includes('neerja') || n.includes('hazel') || n.includes('susan')) {
+            gender = 'Female';
+          }
+
+          return {
+            voiceURI: `system:${v.name}`,
+            name: `${v.name}`,
+            lang: v.lang,
+            languageCode: v.lang,
+            gender,
+            quality: 'System',
+            type: 'browser',
+            nativeVoice: v
+          };
+        });
       };
 
       loadBrowserVoices();
@@ -92,18 +102,24 @@ class SpeechEngine {
         }
       }
     } catch (_e) {
-      // Use fallback static list
+      // Static fallback
     }
   }
 
   // ── Voice Catalog & Selection ─────────────────────────────────────────────
 
   getVoices() {
-    // Return neural voices combined with any unique system voices
     const combined = [...this._neuralVoices];
+    // Add real detected Indian / English system voices
     if (this._browserVoices.length > 0) {
-      this._browserVoices.forEach(bv => {
-        if (!combined.some(v => v.name === bv.name)) {
+      const relevantSystemVoices = this._browserVoices.filter(bv => {
+        const l = (bv.lang || '').toLowerCase();
+        const n = (bv.name || '').toLowerCase();
+        return l.includes('-in') || l.includes('_in') || l.startsWith('hi') || n.includes('india') || n.includes('heera') || n.includes('ravi');
+      });
+
+      relevantSystemVoices.forEach(bv => {
+        if (!combined.some(v => v.voiceURI === bv.voiceURI || v.name === bv.name)) {
           combined.push(bv);
         }
       });
@@ -123,7 +139,7 @@ class SpeechEngine {
     const found = all.find(v => v.voiceURI === voiceURI || v.name === voiceURI);
     if (found) {
       this.selectedVoice = found;
-      console.log(`[SpeechEngine] Voice switched to: ${found.name} (${found.voiceURI})`);
+      console.log(`[SpeechEngine] Active voice: ${found.name} (${found.gender})`);
     }
   }
 
@@ -172,19 +188,19 @@ class SpeechEngine {
       ? articulatePunctuation(rawText)
       : rawText;
 
-    // If a system browser voice was explicitly picked, speak with browser directly
+    // If native system voice was picked directly
     if (this.selectedVoice?.type === 'browser') {
       this._speakWithBrowserSynthesis(processedText, sentenceIndex);
       return;
     }
 
-    // Try Neural Edge TTS via serverless proxy
+    // Try Neural Edge TTS via serverless endpoint
     try {
       const { audioBase64, timepoints } = await this._fetchAudio(processedText);
       if (!this.isPlaying) return;
       this._playAudio(audioBase64, timepoints, sentenceIndex);
     } catch (err) {
-      console.warn('[SpeechEngine] Edge TTS API unavailable, using matching browser voice:', err.message);
+      console.warn('[SpeechEngine] Edge TTS API unavailable, using gender-matched synthesis:', err.message);
       this._speakWithBrowserSynthesis(processedText, sentenceIndex);
     }
   }
@@ -268,7 +284,7 @@ class SpeechEngine {
   }
 
   /**
-   * Browser SpeechSynthesis fallback with accurate voice matching
+   * Browser SpeechSynthesis fallback with TRUE gender voice timbre & pitch modulation
    */
   _speakWithBrowserSynthesis(text, sentenceIndex) {
     if (typeof window === 'undefined' || !window.speechSynthesis) {
@@ -283,31 +299,45 @@ class SpeechEngine {
     const words = text.split(/\s+/).filter(Boolean);
     let currentIdx = this.currentWordIndex;
 
-    // Resolve matching browser voice based on user's selected voice
     const browserVoices = window.speechSynthesis.getVoices() || [];
     const targetLang = (this.selectedVoice?.lang || 'en-IN').toLowerCase();
     const targetGender = (this.selectedVoice?.gender || 'Female').toLowerCase();
-    const targetName = (this.selectedVoice?.name || '').toLowerCase();
+    const isMaleRequested = targetGender === 'male';
 
     let matchedVoice = null;
     if (this.selectedVoice?.nativeVoice) {
       matchedVoice = this.selectedVoice.nativeVoice;
     } else {
-      // Match by exact language + gender
-      matchedVoice = browserVoices.find(v => {
-        const l = (v.lang || '').toLowerCase();
-        const n = (v.name || '').toLowerCase();
-        const isLang = l === targetLang || l.startsWith(targetLang.split('-')[0]);
-        const isGender = targetGender === 'female'
-          ? (n.includes('female') || n.includes('heera') || n.includes('swara') || n.includes('kalpana') || n.includes('zira'))
-          : (n.includes('male') || n.includes('ravi') || n.includes('madhur') || n.includes('hemant') || n.includes('david'));
-        return isLang && isGender;
-      }) || browserVoices.find(v => (v.lang || '').toLowerCase().includes(targetLang.split('-')[0]))
-         || browserVoices.find(v => (v.lang || '').toLowerCase().includes('in'))
-         || browserVoices[0];
+      if (isMaleRequested) {
+        // Look for male voices
+        matchedVoice = browserVoices.find(v => {
+          const n = (v.name || '').toLowerCase();
+          const l = (v.lang || '').toLowerCase();
+          const isMale = n.includes('ravi') || n.includes('david') || n.includes('george') || n.includes('mark') || n.includes('male') || n.includes('madhur') || n.includes('hemant');
+          const isLang = l.includes('in') || l.startsWith(targetLang.split('-')[0]) || l.startsWith('en');
+          return isMale && isLang;
+        }) || browserVoices.find(v => {
+          const n = (v.name || '').toLowerCase();
+          return n.includes('ravi') || n.includes('david') || n.includes('george') || n.includes('male');
+        });
+      } else {
+        // Look for female voices
+        matchedVoice = browserVoices.find(v => {
+          const n = (v.name || '').toLowerCase();
+          const l = (v.lang || '').toLowerCase();
+          const isFemale = n.includes('heera') || n.includes('swara') || n.includes('kalpana') || n.includes('zira') || n.includes('female') || n.includes('neerja');
+          const isLang = l.includes('in') || l.startsWith(targetLang.split('-')[0]) || l.startsWith('en');
+          return isFemale && isLang;
+        }) || browserVoices.find(v => (v.lang || '').toLowerCase().includes('in'))
+           || browserVoices[0];
+      }
     }
 
-    console.log(`[BrowserSynthesis] Using voice: ${matchedVoice?.name || 'Default'}`);
+    // Dynamic pitch modulation:
+    // If male requested, drop pitch to 0.72 - 0.78 for a rich, deep, masculine voice!
+    // If female requested, use natural higher pitch 1.08 - 1.15.
+    let computedPitch = isMaleRequested ? 0.75 : 1.10;
+    console.log(`[BrowserSynthesis] Speaking as ${isMaleRequested ? 'MALE (pitch: ' + computedPitch + ')' : 'FEMALE (pitch: ' + computedPitch + ')'} using voice: ${matchedVoice?.name || 'Default'}`);
 
     const speakNextWord = () => {
       if (!this.isPlaying || currentIdx >= words.length) {
@@ -332,7 +362,7 @@ class SpeechEngine {
 
       const utter = new SpeechSynthesisUtterance(wordToSpeak);
       utter.rate = this.rate;
-      utter.pitch = 1.0;
+      utter.pitch = computedPitch;
       utter.volume = this.volume;
       if (matchedVoice) utter.voice = matchedVoice;
 
