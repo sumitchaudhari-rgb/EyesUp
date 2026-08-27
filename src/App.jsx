@@ -71,6 +71,11 @@ export default function App() {
     speechEngine.setSpeakPunctuation(speakPunctuation);
   }, [speakPunctuation]);
 
+  useEffect(() => {
+    const initialVoice = speechEngine.selectedVoiceURI || speechEngine.getVoices()[0]?.voiceURI;
+    if (initialVoice) setSelectedVoiceURI(initialVoice);
+  }, []);
+
   // Load sample document
   const handleLoadSample = () => {
     speechEngine.stop();

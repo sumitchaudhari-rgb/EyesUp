@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Volume2, Mic, Play, Check, Clock, PenTool, MessageSquare } from 'lucide-react';
+import { X, Volume2, Mic, Play, Check, Clock, PenTool, MessageSquare, Sparkles } from 'lucide-react';
 import { speechEngine } from '../utils/speechEngine';
 
 const SPEED_PRESETS = [0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0];
@@ -30,8 +30,7 @@ export default function VoiceSettingsModal({
   onToggleSpeakPunctuation
 }) {
   const [voices, setVoices] = useState([]);
-  const [pitch, setPitch] = useState(1.0);
-  const [isTestingVoice, setIsTestingVoice] = useState(false);
+  const [testingVoiceURI, setTestingVoiceURI] = useState(null);
 
   useEffect(() => {
     if (isOpen) {
@@ -42,16 +41,33 @@ export default function VoiceSettingsModal({
 
   if (!isOpen) return null;
 
-  const handleTestVoice = (voice) => {
-    setIsTestingVoice(true);
+  const currentSelectedURI = selectedVoiceURI || speechEngine.selectedVoiceURI || (voices[0]?.voiceURI ?? '');
+
+  const handleTestVoice = (e, voice) => {
+    e.stopPropagation();
+    setTestingVoiceURI(voice.voiceURI);
+    
+    // Select this voice in engine and parent state
     speechEngine.setVoice(voice.voiceURI);
+    onSelectVoice(voice.voiceURI);
     speechEngine.setRate(playbackSpeed);
-    speechEngine.setPitch(pitch);
-    speechEngine.setWordPauseMs(wordPauseMs);
+    speechEngine.setWordPauseMs(0); // Smooth test playback
     speechEngine.setSpeakPunctuation(speakPunctuation);
 
-    speechEngine.speak("Write this: Neurons, communicating via synapses, fire action potentials.", -1);
-    setTimeout(() => setIsTestingVoice(false), 3500);
+    const testText = voice.lang?.startsWith('hi')
+      ? 'लिखिए: तंत्रिका कोशिकाएं संदेश पहुंचाती हैं।'
+      : 'Write this: Neurons communicate via synapses.';
+
+    speechEngine.speak(testText, -1);
+
+    setTimeout(() => {
+      setTestingVoiceURI(null);
+    }, 3500);
+  };
+
+  const handleSelect = (voiceURI) => {
+    speechEngine.setVoice(voiceURI);
+    onSelectVoice(voiceURI);
   };
 
   return (
@@ -66,11 +82,11 @@ export default function VoiceSettingsModal({
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="font-serif font-bold text-xl text-indigo-deep">Voice & Dictation</h3>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-100 text-emerald-900 border border-emerald-300">
-                  Edge TTS · Free
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-100 text-emerald-900 border border-emerald-300 flex items-center gap-1">
+                  <Sparkles className="w-2.5 h-2.5" /> Neural + Indian Voices
                 </span>
               </div>
-              <p className="text-xs text-indigo-muted">Microsoft Neural Indian voices — no API key needed</p>
+              <p className="text-xs text-indigo-muted">Select your preferred Indian English or regional voice</p>
             </div>
           </div>
           <button
@@ -86,27 +102,31 @@ export default function VoiceSettingsModal({
           {/* Punctuation Dictation Toggle */}
           <div
             onClick={onToggleSpeakPunctuation}
-            className={`p-3.5 rounded-2xl border cursor-pointer transition-all ${speakPunctuation
+            className={`p-3.5 rounded-2xl border cursor-pointer transition-all ${
+              speakPunctuation
                 ? 'bg-highlighter-active border-indigo-pen/40 ring-1 ring-highlighter shadow-sm'
                 : 'bg-cream-100 border-cream-300 hover:bg-cream-200/70'
-              }`}
+            }`}
           >
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-indigo-deep flex items-center gap-1.5">
                 <MessageSquare className="w-4 h-4 text-indigo-pen" />
                 Read Punctuation Aloud
               </span>
-              <span className={`w-5 h-5 rounded-md flex items-center justify-center text-xs ${speakPunctuation ? 'bg-indigo-pen text-cream-50' : 'border border-cream-400'
-                }`}>
+              <span
+                className={`w-5 h-5 rounded-md flex items-center justify-center text-xs ${
+                  speakPunctuation ? 'bg-indigo-pen text-cream-50' : 'border border-cream-400'
+                }`}
+              >
                 {speakPunctuation && <Check className="w-3.5 h-3.5" />}
               </span>
             </div>
-            <p className="text-[11px] text-indigo-muted mt-1 leading-relaxed">
-              Speaks punctuation marks aloud ("comma", "full stop", "question mark", "brackets", "quotes") during handwriting dictation.
+            <p className="text-[11px] text-indigo-muted mt-1">
+              Speaks punctuation marks aloud ("comma", "full stop", "question mark") to match dictation.
             </p>
           </div>
 
-          {/* Word-by-Word Handwriting Pause Setting */}
+          {/* Word-by-Word Pause Slider */}
           <div className="p-4 rounded-2xl bg-cream-100/80 border border-cream-300 space-y-2.5">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
@@ -114,12 +134,11 @@ export default function VoiceSettingsModal({
                 <span className="text-xs font-bold text-indigo-deep">Pause After Each Word</span>
               </div>
               <span className="font-mono text-xs font-bold bg-highlighter text-indigo-deep px-2.5 py-0.5 rounded-lg border border-highlighter-border shadow-sm">
-                {wordPauseMs === 0 ? '0s (Fluid Speech)' : `${(wordPauseMs / 1000).toFixed(1)}s Pause`}
+                {wordPauseMs === 0 ? '0s (Fluid)' : `${(wordPauseMs / 1000).toFixed(1)}s`}
               </span>
             </div>
-
             <p className="text-[11px] text-indigo-muted">
-              Gives you time to write each word in your notebook before the next word starts speaking.
+              Gives students comfortable handwriting time after every spoken word.
             </p>
 
             <input
@@ -138,10 +157,11 @@ export default function VoiceSettingsModal({
                   key={preset.ms}
                   type="button"
                   onClick={() => onChangeWordPause(preset.ms)}
-                  className={`py-1.5 px-2 rounded-xl text-[11px] font-mono font-semibold transition-all ${wordPauseMs === preset.ms
+                  className={`py-1.5 px-2 rounded-xl text-[11px] font-mono font-semibold transition-all ${
+                    wordPauseMs === preset.ms
                       ? 'bg-indigo-pen text-cream-50 shadow-sm'
                       : 'bg-cream-50 hover:bg-cream-200 text-indigo-pen border border-cream-300'
-                    }`}
+                  }`}
                 >
                   {preset.label}
                 </button>
@@ -152,7 +172,7 @@ export default function VoiceSettingsModal({
           {/* Voice Selection List */}
           <div className="space-y-1.5">
             <label className="text-xs font-mono uppercase tracking-wider text-indigo-muted font-semibold block mb-1">
-              Microsoft Edge Neural Indian Voices ({voices.length})
+              Select Indian Voice ({voices.length})
             </label>
 
             {voices.length === 0 ? (
@@ -161,28 +181,45 @@ export default function VoiceSettingsModal({
               </div>
             ) : (
               voices.map((voice) => {
-                const isSelected = selectedVoiceURI === voice.voiceURI || (!selectedVoiceURI && voice.default);
+                const isSelected = currentSelectedURI === voice.voiceURI;
+                const isPlayingThis = testingVoiceURI === voice.voiceURI;
 
                 return (
                   <div
                     key={voice.voiceURI}
-                    onClick={() => onSelectVoice(voice.voiceURI)}
-                    className={`flex items-center justify-between p-3 rounded-2xl border cursor-pointer transition-all duration-150 ${isSelected
+                    onClick={() => handleSelect(voice.voiceURI)}
+                    className={`flex items-center justify-between p-3 rounded-2xl border cursor-pointer transition-all duration-150 ${
+                      isSelected
                         ? 'bg-highlighter-active border-indigo-pen/40 ring-2 ring-highlighter shadow-sm'
                         : 'bg-cream-100 hover:bg-cream-200/80 border-cream-300'
-                      }`}
+                    }`}
                   >
                     <div className="flex items-center gap-3 min-w-0">
-                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold ${isSelected ? 'bg-indigo-pen text-cream-50' : 'bg-cream-200 text-indigo-muted'
-                        }`}>
+                      <div
+                        className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold transition-colors ${
+                          isSelected ? 'bg-indigo-pen text-cream-50' : 'bg-cream-200 text-indigo-muted'
+                        }`}
+                      >
                         {isSelected ? <Check className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
                       </div>
                       <div className="truncate">
                         <div className="flex items-center gap-1.5 flex-wrap">
                           <span className="text-xs font-semibold text-indigo-deep truncate">{voice.name}</span>
-                          <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-emerald-50 text-emerald-800 border border-emerald-200">Neural</span>
+                          <span
+                            className={`px-1.5 py-0.5 rounded text-[10px] font-mono border ${
+                              voice.type === 'neural'
+                                ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                                : 'bg-amber-50 text-amber-800 border-amber-200'
+                            }`}
+                          >
+                            {voice.quality || 'Neural'}
+                          </span>
                           {voice.gender && (
-                            <span className={`px-1.5 py-0.5 rounded text-[10px] font-mono border ${(GENDER_BADGE[voice.gender] || GENDER_BADGE.Female).cls}`}>
+                            <span
+                              className={`px-1.5 py-0.5 rounded text-[10px] font-mono border ${
+                                (GENDER_BADGE[voice.gender] || GENDER_BADGE.Female).cls
+                              }`}
+                            >
                               {voice.gender}
                             </span>
                           )}
@@ -193,14 +230,15 @@ export default function VoiceSettingsModal({
 
                     <button
                       type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleTestVoice(voice);
-                      }}
-                      className="px-2.5 py-1 rounded-lg bg-cream-200 hover:bg-cream-300 text-indigo-pen text-xs font-medium border border-cream-400 flex items-center gap-1 flex-shrink-0 transition-colors"
+                      onClick={(e) => handleTestVoice(e, voice)}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-medium border flex items-center gap-1 flex-shrink-0 transition-colors ${
+                        isPlayingThis
+                          ? 'bg-indigo-pen text-cream-50 border-indigo-pen animate-pulse'
+                          : 'bg-cream-200 hover:bg-cream-300 text-indigo-pen border-cream-400'
+                      }`}
                     >
                       <Play className="w-3 h-3 fill-current" />
-                      <span>Test</span>
+                      <span>{isPlayingThis ? 'Playing…' : 'Test'}</span>
                     </button>
                   </div>
                 );
@@ -233,10 +271,11 @@ export default function VoiceSettingsModal({
                   key={rate}
                   type="button"
                   onClick={() => onChangeSpeed(rate)}
-                  className={`py-1 rounded-lg text-[10px] font-mono font-semibold transition-all ${playbackSpeed === rate
+                  className={`py-1 rounded-lg text-[10px] font-mono font-semibold transition-all ${
+                    playbackSpeed === rate
                       ? 'bg-indigo-pen text-cream-50 shadow-sm'
                       : 'bg-cream-200 hover:bg-cream-300 text-indigo-pen border border-cream-300'
-                    }`}
+                  }`}
                 >
                   {rate}x
                 </button>
@@ -245,13 +284,14 @@ export default function VoiceSettingsModal({
           </div>
         </div>
 
-        {/* Footer */}
+        {/* Modal Actions */}
         <div className="pt-2 border-t border-cream-300">
           <button
             onClick={onClose}
-            className="w-full py-3 rounded-2xl bg-indigo-pen hover:bg-indigo-deep text-cream-50 font-bold text-sm shadow-md transition-all active:scale-95"
+            className="w-full py-3 rounded-2xl bg-indigo-pen hover:bg-indigo-deep text-cream-50 font-bold text-sm shadow-md transition-all active:scale-95 flex items-center justify-center gap-2"
           >
-            Save Pacing Settings
+            <Check className="w-4 h-4" />
+            Done
           </button>
         </div>
       </div>
