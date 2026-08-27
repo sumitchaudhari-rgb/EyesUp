@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { FileText, ZoomIn, ZoomOut, PenTool, Sparkles } from 'lucide-react';
+import { FileText, ZoomIn, ZoomOut, PenTool } from 'lucide-react';
 
 export default function DocumentViewer({
   doc,
@@ -26,9 +26,12 @@ export default function DocumentViewer({
   }, [activeSentenceIndex]);
 
   return (
-    <div className="flex flex-col h-full bg-cream-50 rounded-3xl border border-cream-300 shadow-page overflow-hidden animate-page-reveal">
+    <section 
+      aria-label="Document Reader" 
+      className="flex flex-col h-full bg-cream-50 rounded-3xl border border-cream-300 shadow-page overflow-hidden animate-page-reveal"
+    >
       {/* Document View Top Toolbar */}
-      <div className="flex items-center justify-between px-5 py-3.5 border-b border-cream-300 bg-cream-100/90 backdrop-blur-sm">
+      <div className="flex items-center justify-between px-4 sm:px-5 py-3.5 border-b border-cream-300 bg-cream-100/90 backdrop-blur-sm">
         <div className="flex items-center gap-2.5 min-w-0">
           <FileText className="w-4 h-4 text-indigo-pen flex-shrink-0" />
           <span className="font-serif font-semibold text-sm text-indigo-deep truncate">
@@ -43,16 +46,20 @@ export default function DocumentViewer({
         <div className="flex items-center gap-1.5 flex-shrink-0">
           <button
             onClick={decreaseFont}
-            className="p-1.5 rounded-lg hover:bg-cream-200 text-indigo-muted hover:text-indigo-deep transition-colors active:scale-95"
+            className="p-1.5 rounded-lg hover:bg-cream-200 text-indigo-muted hover:text-indigo-deep transition-colors active:scale-95 focus-visible:ring-2 focus-visible:ring-indigo-pen"
             title="Decrease font size"
+            aria-label="Decrease font size"
           >
             <ZoomOut className="w-4 h-4" />
           </button>
-          <span className="text-xs font-mono text-indigo-muted w-8 text-center">{fontSize}px</span>
+          <span className="text-xs font-mono text-indigo-muted w-8 text-center" aria-live="polite">
+            {fontSize}px
+          </span>
           <button
             onClick={increaseFont}
-            className="p-1.5 rounded-lg hover:bg-cream-200 text-indigo-muted hover:text-indigo-deep transition-colors active:scale-95"
+            className="p-1.5 rounded-lg hover:bg-cream-200 text-indigo-muted hover:text-indigo-deep transition-colors active:scale-95 focus-visible:ring-2 focus-visible:ring-indigo-pen"
             title="Increase font size"
+            aria-label="Increase font size"
           >
             <ZoomIn className="w-4 h-4" />
           </button>
@@ -62,10 +69,13 @@ export default function DocumentViewer({
       {/* Document Paper Container */}
       <div 
         ref={containerRef}
-        className="flex-1 overflow-y-auto p-6 sm:p-8 notebook-ruled bg-cream-50 scroll-smooth"
+        tabIndex={0}
+        role="region"
+        aria-label="Extracted document text"
+        className="flex-1 overflow-y-auto p-5 sm:p-8 notebook-ruled bg-cream-50 scroll-smooth focus-visible:ring-2 focus-visible:ring-indigo-pen"
       >
         {/* Left red notebook margin indicator */}
-        <div className="relative pl-6 sm:pl-8 border-l-2 border-margin-red/40">
+        <div className="relative pl-5 sm:pl-8 border-l-2 border-margin-red/40">
           <div className="space-y-3 font-serif leading-relaxed" style={{ fontSize: `${fontSize}px` }}>
             {doc.sentences.map((sentence, idx) => {
               const isActive = idx === activeSentenceIndex;
@@ -74,12 +84,21 @@ export default function DocumentViewer({
                   key={idx}
                   ref={isActive ? activeSentenceRef : null}
                   onClick={() => onSelectSentence(idx)}
-                  className={`inline-block mr-1.5 cursor-pointer rounded px-2 py-1 transition-all duration-150 select-text ${
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      onSelectSentence(idx);
+                    }
+                  }}
+                  tabIndex={0}
+                  role="button"
+                  aria-pressed={isActive}
+                  className={`inline-block mr-1.5 cursor-pointer rounded px-2 py-1 transition-all duration-150 select-text focus-visible:ring-2 focus-visible:ring-indigo-pen ${
                     isActive
                       ? 'active-sentence-highlight font-semibold text-indigo-deep'
                       : 'hover:bg-cream-200/80 text-indigo-pen/90'
                   }`}
-                  title={`Sentence ${idx + 1} (Click to jump & read)`}
+                  title={`Sentence ${idx + 1} (Click to jump & read aloud)`}
                 >
                   <span className={`text-[10px] font-mono select-none mr-1 align-top inline-flex items-center gap-0.5 ${
                     isActive ? 'text-indigo-deep font-bold' : 'text-indigo-muted/50'
@@ -98,12 +117,14 @@ export default function DocumentViewer({
       <div className="px-5 py-2.5 border-t border-cream-300 bg-cream-100/90 flex items-center justify-between text-xs text-indigo-muted font-sans">
         <div className="flex items-center gap-2">
           <span className={`w-2 h-2 rounded-full ${isPlaying ? 'bg-emerald-500 animate-ping' : 'bg-emerald-500'}`} />
-          <span>{isPlaying ? 'Speaking active sentence...' : 'Ready for hands-free playback'}</span>
+          <span aria-live="polite">
+            {isPlaying ? 'Speaking active sentence...' : 'Ready for hands-free playback'}
+          </span>
         </div>
         <div className="text-[11px] font-mono">
           Page 1 of {doc.totalPages || 1}
         </div>
       </div>
-    </div>
+    </section>
   );
 }
