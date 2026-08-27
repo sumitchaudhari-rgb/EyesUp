@@ -7,26 +7,43 @@ import {
   RotateCcw, 
   Volume2, 
   Repeat, 
-  Sparkles 
+  Clock,
+  MessageSquare
 } from 'lucide-react';
+
+const SPEED_PRESETS = [0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
+const PAUSE_CYCLE = [0, 300, 500, 800, 1200];
 
 export default function PlaybackPanel({
   doc,
   activeSentenceIndex,
+  activeWordIndex,
   isPlaying,
   playbackSpeed,
   repeatMode,
+  wordPauseMs,
+  speakPunctuation,
+  onToggleSpeakPunctuation,
   onToggleRepeat,
   onTogglePlay,
   onNextSentence,
   onPrevSentence,
   onRestartSentence,
   onChangeSpeed,
+  onChangeWordPause,
   onSelectSentence
 }) {
   const currentSentence = doc.sentences[activeSentenceIndex] || "No sentence loaded";
   const totalSentences = doc.sentences.length;
   const progressPercent = Math.round(((activeSentenceIndex + 1) / totalSentences) * 100) || 0;
+
+  const words = currentSentence.split(/\s+/).filter(w => w.length > 0);
+
+  const handleCyclePause = () => {
+    const currentIndex = PAUSE_CYCLE.indexOf(wordPauseMs);
+    const nextIndex = (currentIndex + 1) % PAUSE_CYCLE.length;
+    onChangeWordPause(PAUSE_CYCLE[nextIndex]);
+  };
 
   return (
     <section 
@@ -35,7 +52,7 @@ export default function PlaybackPanel({
     >
       {/* Primary Focus Card (Arm's-Length Legibility) */}
       <div className="flex-1 bg-cream-50 rounded-3xl border-2 border-indigo-pen/10 shadow-page p-5 sm:p-8 flex flex-col justify-between relative overflow-hidden">
-        {/* Subtle decorative background watermark */}
+        {/* Decorative Watermark */}
         <div 
           aria-hidden="true" 
           className="absolute top-4 right-4 text-cream-300 pointer-events-none select-none font-serif text-7xl sm:text-8xl font-bold opacity-30"
@@ -44,7 +61,7 @@ export default function PlaybackPanel({
         </div>
 
         {/* Top meta row */}
-        <div className="flex items-center justify-between z-10">
+        <div className="flex items-center justify-between z-10 flex-wrap gap-2">
           <div className="flex items-center gap-2">
             <span className="px-3 py-1 rounded-full bg-highlighter text-indigo-deep text-xs font-bold font-mono tracking-tight shadow-sm flex items-center gap-1.5">
               <span className={`w-2 h-2 rounded-full ${isPlaying ? 'bg-indigo-deep animate-ping' : 'bg-indigo-deep'}`} />
@@ -55,48 +72,86 @@ export default function PlaybackPanel({
             </span>
           </div>
 
-          <div className="flex items-center gap-2">
-            {/* Loop active sentence */}
+          {/* Dictation Action Badges */}
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {/* Punctuation Dictation Toggle */}
+            <button
+              onClick={onToggleSpeakPunctuation}
+              className={`px-2.5 py-1 rounded-lg text-xs font-mono font-semibold border flex items-center gap-1 transition-all ${
+                speakPunctuation
+                  ? 'bg-amber-100 text-amber-900 border-amber-300 shadow-sm'
+                  : 'bg-cream-200 text-indigo-muted border-cream-300 hover:text-indigo-deep'
+              }`}
+              title="Speaks 'comma', 'full stop', 'question mark' aloud (U)"
+            >
+              <MessageSquare className="w-3.5 h-3.5" />
+              <span>{speakPunctuation ? 'Punctuation ON' : 'Punctuation OFF'}</span>
+            </button>
+
+            {/* Word Pause Button */}
+            <button
+              onClick={handleCyclePause}
+              className={`px-2.5 py-1 rounded-lg text-xs font-mono font-semibold border flex items-center gap-1 transition-all ${
+                wordPauseMs > 0
+                  ? 'bg-highlighter text-indigo-deep border-highlighter-border shadow-sm'
+                  : 'bg-cream-200 text-indigo-muted border-cream-300 hover:text-indigo-deep'
+              }`}
+              title="Cycle pause after each word: 0s -> 0.3s -> 0.5s -> 0.8s -> 1.2s (P)"
+            >
+              <Clock className="w-3.5 h-3.5" />
+              <span>{wordPauseMs === 0 ? 'No Pause' : `${(wordPauseMs / 1000).toFixed(1)}s Pause`}</span>
+            </button>
+
+            {/* Loop Toggle */}
             <button
               onClick={onToggleRepeat}
               aria-pressed={repeatMode}
-              className={`px-2.5 py-1 rounded-lg text-xs font-mono font-semibold border transition-all focus-visible:ring-2 focus-visible:ring-indigo-pen ${
+              className={`px-2.5 py-1 rounded-lg text-xs font-mono font-semibold border transition-all ${
                 repeatMode 
                   ? 'bg-amber-100 text-amber-900 border-amber-300 shadow-sm' 
                   : 'bg-cream-200 text-indigo-muted border-cream-300 hover:text-indigo-deep'
               }`}
-              title="Repeat this sentence indefinitely until you write it down (T)"
-              aria-label="Toggle sentence repeat loop"
+              title="Repeat this sentence indefinitely (T)"
             >
               <Repeat className="w-3.5 h-3.5 inline mr-1" />
               {repeatMode ? 'Looping' : 'Loop'}
             </button>
-
-            <span className="text-xs font-mono text-indigo-pen bg-cream-200 px-2.5 py-1 rounded-lg border border-cream-300" aria-live="polite">
-              {progressPercent}%
-            </span>
           </div>
         </div>
 
-        {/* Big high-contrast sentence display with calm transition on change */}
+        {/* Big sentence display with word-by-word active focus */}
         <div className="my-auto py-4 sm:py-6 z-10">
           <p 
             key={activeSentenceIndex} 
             aria-live="polite"
             className="font-serif text-xl sm:text-3xl md:text-4xl font-medium text-indigo-deep leading-snug tracking-tight animate-sentence-focus"
           >
-            “{currentSentence}”
+            “{words.map((w, wIdx) => {
+              const isCurrentWord = isPlaying && wordPauseMs > 0 && activeWordIndex === wIdx;
+              return (
+                <span
+                  key={wIdx}
+                  className={`inline-block mr-1.5 transition-all duration-150 rounded px-1 ${
+                    isCurrentWord 
+                      ? 'bg-highlighter text-indigo-deep font-bold scale-105 shadow-sm ring-2 ring-highlighter-border' 
+                      : ''
+                  }`}
+                >
+                  {w}
+                </span>
+              );
+            })}”
           </p>
-          <div className="mt-3 sm:mt-4 flex items-center gap-2">
-            <span className="text-xs font-sans text-indigo-muted italic">
+          <div className="mt-3 sm:mt-4 flex items-center justify-between text-xs text-indigo-muted">
+            <span className="italic">
               {isPlaying 
-                ? "Speaking aloud... Hands on your notebook." 
-                : "Paused. Tap Spacebar or click Read Aloud to resume."}
+                ? (speakPunctuation ? "Speaking with punctuation dictation & word pauses..." : "Speaking in Indian accent...") 
+                : "Paused. Tap Spacebar or say 'play' to resume narration."}
             </span>
           </div>
         </div>
 
-        {/* Scrubber slider for instant navigation across sentences */}
+        {/* Scrubber slider */}
         <div className="space-y-2 z-10 pt-3 sm:pt-4 border-t border-cream-300">
           <div className="flex items-center justify-between text-[11px] font-mono text-indigo-muted">
             <span>Sentence 1</span>
@@ -173,20 +228,20 @@ export default function PlaybackPanel({
           </button>
         </div>
 
-        {/* Speed Rate Badges */}
+        {/* Speed Rate Badges (0.25x to 2.0x) */}
         <div className="flex items-center justify-between pt-2 border-t border-cream-200 text-xs">
           <div className="flex items-center gap-1.5 text-indigo-muted font-medium">
             <Volume2 className="w-4 h-4 text-indigo-pen" />
             <span>Reading Speed:</span>
           </div>
 
-          <div className="flex items-center gap-1" role="group" aria-label="Reading Speed Presets">
-            {[0.8, 1.0, 1.25, 1.5].map((speed) => (
+          <div className="flex items-center gap-1 flex-wrap" role="group" aria-label="Reading Speed Presets">
+            {SPEED_PRESETS.map((speed) => (
               <button
                 key={speed}
                 onClick={() => onChangeSpeed(speed)}
                 aria-pressed={playbackSpeed === speed}
-                className={`px-3 py-1 rounded-xl font-mono font-semibold transition-all focus-visible:ring-2 focus-visible:ring-indigo-pen ${
+                className={`px-2.5 py-1 rounded-xl font-mono text-[11px] font-semibold transition-all focus-visible:ring-2 focus-visible:ring-indigo-pen ${
                   playbackSpeed === speed
                     ? 'bg-indigo-pen text-cream-50 shadow-sm'
                     : 'bg-cream-200 hover:bg-cream-300 text-indigo-pen border border-cream-300'

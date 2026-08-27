@@ -10,21 +10,31 @@ import PhotoOrientationModal from './components/PhotoOrientationModal';
 import ExtractionLoader from './components/ExtractionLoader';
 import ErrorAlert from './components/ErrorAlert';
 import { sampleDocument } from './data/sampleDocument';
+import { splitIntoSentences } from './utils/textCleaner';
 import { extractTextFromPDF } from './utils/pdfExtractor';
 import { extractTextFromImage } from './utils/ocrExtractor';
 import { speechEngine } from './utils/speechEngine';
+import { voiceCommandListener } from './utils/voiceCommandListener';
 import { audioFeedback } from './utils/audioFeedback';
+import { Mic } from 'lucide-react';
 
-const SPEED_PRESETS = [0.8, 1.0, 1.25, 1.5, 1.75];
+const SPEED_PRESETS = [0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0];
 
 export default function App() {
   const [currentDoc, setCurrentDoc] = useState(null);
   const [activeSentenceIndex, setActiveSentenceIndex] = useState(0);
+  const [activeWordIndex, setActiveWordIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [playbackSpeed, setPlaybackSpeed] = useState(1.0);
+  const [wordPauseMs, setWordPauseMs] = useState(400); // 400ms pause between words
+  const [speakPunctuation, setSpeakPunctuation] = useState(true); // Speak punctuation
   const [repeatMode, setRepeatMode] = useState(false);
   const [selectedVoiceURI, setSelectedVoiceURI] = useState('');
   
+  // Voice Command Microphone State
+  const [isVoiceControlActive, setIsVoiceControlActive] = useState(false);
+  const [voiceToast, setVoiceToast] = useState(null);
+
   // Modals
   const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
   const [isVoiceModalOpen, setIsVoiceModalOpen] = useState(false);
@@ -38,24 +48,35 @@ export default function App() {
   const [currentFileProcessing, setCurrentFileProcessing] = useState(null);
   const [errorMessage, setErrorMessage] = useState(null);
 
-  // Refs for tracking current state inside async callbacks
+  // Refs
   const docRef = useRef(currentDoc);
   const activeIndexRef = useRef(activeSentenceIndex);
   const isPlayingRef = useRef(isPlaying);
   const repeatModeRef = useRef(repeatMode);
   const playbackSpeedRef = useRef(playbackSpeed);
+  const wordPauseMsRef = useRef(wordPauseMs);
+  const speakPunctuationRef = useRef(speakPunctuation);
 
   useEffect(() => { docRef.current = currentDoc; }, [currentDoc]);
   useEffect(() => { activeIndexRef.current = activeSentenceIndex; }, [activeSentenceIndex]);
   useEffect(() => { isPlayingRef.current = isPlaying; }, [isPlaying]);
   useEffect(() => { repeatModeRef.current = repeatMode; }, [repeatMode]);
   useEffect(() => { playbackSpeedRef.current = playbackSpeed; }, [playbackSpeed]);
+  useEffect(() => { 
+    wordPauseMsRef.current = wordPauseMs;
+    speechEngine.setWordPauseMs(wordPauseMs);
+  }, [wordPauseMs]);
+  useEffect(() => {
+    speakPunctuationRef.current = speakPunctuation;
+    speechEngine.setSpeakPunctuation(speakPunctuation);
+  }, [speakPunctuation]);
 
-  // Load sample document for instant preview
+  // Load sample document
   const handleLoadSample = () => {
     speechEngine.stop();
     setCurrentDoc(sampleDocument);
     setActiveSentenceIndex(0);
+    setActiveWordIndex(0);
     setIsPlaying(false);
     setErrorMessage(null);
     audioFeedback.playResume();
@@ -66,11 +87,12 @@ export default function App() {
     speechEngine.stop();
     setCurrentDoc(null);
     setActiveSentenceIndex(0);
+    setActiveWordIndex(0);
     setIsPlaying(false);
     setErrorMessage(null);
   };
 
-  // Speak a sentence by index
+  // Speak sentence
   const speakSentenceAtIndex = useCallback((index) => {
     const doc = docRef.current;
     if (!doc || !doc.sentences || index < 0 || index >= doc.sentences.length) {
@@ -78,29 +100,38 @@ export default function App() {
       return;
     }
     const text = doc.sentences[index];
+
     setActiveSentenceIndex(index);
+    setActiveWordIndex(0);
     setIsPlaying(true);
     speechEngine.speak(text, index);
   }, []);
 
   // Web Speech API lifecycle bindings
   useEffect(() => {
+    speechEngine.onSentenceStart = () => {
+      setActiveWordIndex(0);
+    };
+
+    speechEngine.onWordStart = ({ wordIndex }) => {
+      if (typeof wordIndex === 'number') {
+        setActiveWordIndex(wordIndex);
+      }
+    };
+
     speechEngine.onSentenceEnd = ({ sentenceIndex }) => {
       const doc = docRef.current;
       if (!doc || !isPlayingRef.current) return;
 
       if (repeatModeRef.current) {
-        // Repeat mode active: replay current sentence
         speakSentenceAtIndex(sentenceIndex);
         return;
       }
 
       const nextIndex = sentenceIndex + 1;
       if (nextIndex < doc.sentences.length) {
-        // Auto-advance to next sentence
         speakSentenceAtIndex(nextIndex);
       } else {
-        // Finished last sentence
         setIsPlaying(false);
       }
     };
@@ -137,6 +168,7 @@ export default function App() {
       speakSentenceAtIndex(nextIdx);
     } else {
       setActiveSentenceIndex(nextIdx);
+      setActiveWordIndex(0);
     }
   }, [speakSentenceAtIndex]);
 
@@ -150,36 +182,36 @@ export default function App() {
       speakSentenceAtIndex(prevIdx);
     } else {
       setActiveSentenceIndex(prevIdx);
+      setActiveWordIndex(0);
     }
   }, [speakSentenceAtIndex]);
 
-  // Restart current sentence
+  // Restart current sentence / line (1 single replay, then continues forward)
   const handleRestartSentence = useCallback(() => {
+    setRepeatMode(false);
     audioFeedback.playSkipBack();
     speakSentenceAtIndex(activeIndexRef.current);
   }, [speakSentenceAtIndex]);
 
-  // Direct sentence jump from click or slider
+  // Repeat previous word (1 single replay, then continues forward)
+  const handleRepeatPreviousWord = useCallback(() => {
+    setRepeatMode(false);
+    audioFeedback.playSkipBack();
+    speechEngine.repeatPreviousWord();
+  }, []);
+
+  // Direct sentence jump
   const handleSelectSentence = useCallback((idx) => {
     audioFeedback.playSkipForward();
     speakSentenceAtIndex(idx);
   }, [speakSentenceAtIndex]);
 
-  // Toggle loop / repeat mode
-  const handleToggleRepeat = useCallback(() => {
-    setRepeatMode((prev) => !prev);
-    audioFeedback.playResume();
-  }, []);
-
-  // Speed adjustments
+  // Speed adjustments (seamlessly updates pace from current word onward)
   const handleChangeSpeed = useCallback((speed) => {
-    const validSpeed = Number(speed);
+    const validSpeed = Math.max(0.25, Math.min(2.0, Number(Number(speed).toFixed(2))));
     setPlaybackSpeed(validSpeed);
     speechEngine.setRate(validSpeed);
-    if (isPlayingRef.current) {
-      speakSentenceAtIndex(activeIndexRef.current);
-    }
-  }, [speakSentenceAtIndex]);
+  }, []);
 
   const handleCycleSpeed = useCallback(() => {
     const currentIndex = SPEED_PRESETS.indexOf(playbackSpeedRef.current);
@@ -188,10 +220,92 @@ export default function App() {
     handleChangeSpeed(newSpeed);
   }, [handleChangeSpeed]);
 
+  // Word Pause adjustment (seamlessly updates pause duration between subsequent words)
+  const handleChangeWordPause = useCallback((ms) => {
+    const validMs = Math.max(0, Math.min(3000, Number(ms) || 0));
+    setWordPauseMs(validMs);
+    speechEngine.setWordPauseMs(validMs);
+  }, []);
+
+  // Toggles
+  const handleToggleRepeat = useCallback(() => {
+    setRepeatMode((prev) => !prev);
+    audioFeedback.playResume();
+  }, []);
+
+  const handleToggleSpeakPunctuation = useCallback(() => {
+    setSpeakPunctuation((prev) => !prev);
+    audioFeedback.playResume();
+  }, []);
+
   const handleSelectVoice = useCallback((voiceURI) => {
     setSelectedVoiceURI(voiceURI);
     speechEngine.setVoice(voiceURI);
   }, []);
+
+  // Voice Command Listener Handlers & Status
+  const handleToggleVoiceControl = useCallback(() => {
+    if (isVoiceControlActive) {
+      voiceCommandListener.stop();
+      setIsVoiceControlActive(false);
+      audioFeedback.playPause();
+    } else {
+      voiceCommandListener.start();
+      setIsVoiceControlActive(true);
+      audioFeedback.playResume();
+    }
+  }, [isVoiceControlActive]);
+
+  useEffect(() => {
+    voiceCommandListener.onStatusChange = ({ isListening }) => {
+      setIsVoiceControlActive(isListening);
+    };
+
+    voiceCommandListener.onCommand = ({ type, phrase }) => {
+      setVoiceToast(`Heard: "${phrase}"`);
+      setTimeout(() => setVoiceToast(null), 2500);
+
+      switch (type) {
+        case 'pause':
+          if (isPlayingRef.current) {
+            handleTogglePlay();
+          }
+          break;
+        case 'play':
+          if (!isPlayingRef.current) {
+            handleTogglePlay();
+          }
+          break;
+        case 'repeat_word':
+          handleRepeatPreviousWord();
+          break;
+        case 'repeat_line':
+          handleRestartSentence();
+          break;
+        case 'next_sentence':
+          handleNextSentence();
+          break;
+        case 'prev_sentence':
+          handlePrevSentence();
+          break;
+        case 'slower':
+          handleChangeSpeed(Math.max(0.25, Number((playbackSpeedRef.current - 0.2).toFixed(2))));
+          break;
+        case 'faster':
+          handleChangeSpeed(Math.min(2.0, Number((playbackSpeedRef.current + 0.2).toFixed(2))));
+          break;
+        default:
+          break;
+      }
+    };
+  }, [
+    handleTogglePlay,
+    handleRepeatPreviousWord,
+    handleRestartSentence,
+    handleNextSentence,
+    handlePrevSentence,
+    handleChangeSpeed
+  ]);
 
   // Process Document File
   const processDocument = async (file) => {
@@ -222,6 +336,7 @@ export default function App() {
 
       setCurrentDoc(resultDoc);
       setActiveSentenceIndex(0);
+      setActiveWordIndex(0);
       setIsPlaying(false);
       audioFeedback.playResume();
     } catch (err) {
@@ -233,13 +348,12 @@ export default function App() {
     }
   };
 
-  // Upload handler with Photo Orientation Intercept (Phase 7)
+  // Upload handler with Photo Orientation Intercept
   const handleFileUpload = (file) => {
     if (!file) return;
     const isImg = file.type.startsWith('image/') || /\.(png|jpe?g|webp|bmp)$/i.test(file.name || '');
 
     if (isImg) {
-      // Allow student to confirm orientation before OCR
       setPendingImageForRotation(file);
       setIsOrientationModalOpen(true);
     } else {
@@ -247,21 +361,24 @@ export default function App() {
     }
   };
 
-  // Phase 7: Apply Manual Text Corrections & Re-sync Audio
-  const handleSaveEditedText = ({ rawText, sentences }) => {
+  // Apply Manual Text Corrections & Re-sync Audio
+  const handleSaveEditedText = ({ rawText }) => {
     if (!currentDoc) return;
     speechEngine.stop();
+    const sentences = splitIntoSentences(rawText);
+    
     setCurrentDoc((prev) => ({
       ...prev,
       rawText,
       sentences: sentences.length > 0 ? sentences : [rawText]
     }));
     setActiveSentenceIndex(0);
+    setActiveWordIndex(0);
     setIsPlaying(false);
     audioFeedback.playResume();
   };
 
-  // Global Keyboard Shortcuts (Space, Arrows, J/K/L, R, T, E, [, ], M, ?)
+  // Global Keyboard Shortcuts
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (['INPUT', 'TEXTAREA'].includes(e.target.tagName)) return;
@@ -271,25 +388,37 @@ export default function App() {
       if (e.code === 'Space') {
         e.preventDefault();
         handleTogglePlay();
+      } else if (key === 'v') {
+        e.preventDefault();
+        handleToggleVoiceControl();
       } else if (e.code === 'ArrowRight' || key === 'l') {
         e.preventDefault();
         handleNextSentence();
       } else if (e.code === 'ArrowLeft' || key === 'j') {
         e.preventDefault();
         handlePrevSentence();
+      } else if (key === 'w') {
+        e.preventDefault();
+        handleRepeatPreviousWord();
       } else if (key === 'r' || key === 'k') {
         e.preventDefault();
         handleRestartSentence();
       } else if (key === 't') {
         e.preventDefault();
         handleToggleRepeat();
+      } else if (key === 'u') {
+        e.preventDefault();
+        handleToggleSpeakPunctuation();
+      } else if (key === 'p') {
+        e.preventDefault();
+        setWordPauseMs((prev) => (prev > 0 ? 0 : 400));
       } else if (key === 'e' && currentDoc) {
         e.preventDefault();
         setIsTextEditorOpen((prev) => !prev);
       } else if (key === '[') {
         e.preventDefault();
         const cur = playbackSpeedRef.current;
-        handleChangeSpeed(Math.max(0.6, Number((cur - 0.1).toFixed(2))));
+        handleChangeSpeed(Math.max(0.25, Number((cur - 0.1).toFixed(2))));
       } else if (key === ']') {
         e.preventDefault();
         const cur = playbackSpeedRef.current;
@@ -314,10 +443,13 @@ export default function App() {
   }, [
     currentDoc,
     handleTogglePlay, 
+    handleToggleVoiceControl,
     handleNextSentence, 
     handlePrevSentence, 
     handleRestartSentence,
+    handleRepeatPreviousWord,
     handleToggleRepeat,
+    handleToggleSpeakPunctuation,
     handleChangeSpeed
   ]);
 
@@ -327,11 +459,21 @@ export default function App() {
       <Header
         hasDoc={!!currentDoc}
         docTitle={currentDoc?.title}
+        isVoiceControlActive={isVoiceControlActive}
+        onToggleVoiceControl={handleToggleVoiceControl}
         onResetDoc={handleResetDoc}
         onOpenShortcuts={() => setIsShortcutsOpen(true)}
         onOpenVoiceSettings={() => setIsVoiceModalOpen(true)}
         onLoadSample={handleLoadSample}
       />
+
+      {/* Voice Command Recognition Toast Banner */}
+      {voiceToast && (
+        <div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-full bg-indigo-deep text-cream-50 font-mono text-xs font-bold shadow-xl border border-emerald-400/50 flex items-center gap-2 animate-bounce">
+          <Mic className="w-3.5 h-3.5 text-emerald-400" />
+          <span>{voiceToast}</span>
+        </div>
+      )}
 
       {/* Main Content Area */}
       <main className="flex-1">
@@ -340,15 +482,7 @@ export default function App() {
             doc={currentDoc}
             activeSentenceIndex={activeSentenceIndex}
             isPlaying={isPlaying}
-            playbackSpeed={playbackSpeed}
-            repeatMode={repeatMode}
-            onToggleRepeat={handleToggleRepeat}
             onSelectSentence={handleSelectSentence}
-            onTogglePlay={handleTogglePlay}
-            onNextSentence={handleNextSentence}
-            onPrevSentence={handlePrevSentence}
-            onRestartSentence={handleRestartSentence}
-            onChangeSpeed={handleChangeSpeed}
             onOpenTextEditor={() => setIsTextEditorOpen(true)}
           />
         ) : (
@@ -359,7 +493,7 @@ export default function App() {
         )}
       </main>
 
-      {/* Persistent Floating Mini-Bar when Document is active */}
+      {/* Persistent Floating Mini-Bar */}
       {currentDoc && (
         <FloatingControls
           doc={currentDoc}
@@ -367,17 +501,23 @@ export default function App() {
           isPlaying={isPlaying}
           playbackSpeed={playbackSpeed}
           repeatMode={repeatMode}
+          wordPauseMs={wordPauseMs}
+          speakPunctuation={speakPunctuation}
+          onToggleSpeakPunctuation={handleToggleSpeakPunctuation}
+          isVoiceControlActive={isVoiceControlActive}
+          onToggleVoiceControl={handleToggleVoiceControl}
           onToggleRepeat={handleToggleRepeat}
           onTogglePlay={handleTogglePlay}
           onNextSentence={handleNextSentence}
           onPrevSentence={handlePrevSentence}
           onRestartSentence={handleRestartSentence}
           onCycleSpeed={handleCycleSpeed}
+          onChangeWordPause={handleChangeWordPause}
           onOpenVoiceModal={() => setIsVoiceModalOpen(true)}
         />
       )}
 
-      {/* Voice & Audio Settings Modal */}
+      {/* Voice & Dictation Settings Modal */}
       <VoiceSettingsModal
         isOpen={isVoiceModalOpen}
         onClose={() => setIsVoiceModalOpen(false)}
@@ -385,9 +525,13 @@ export default function App() {
         onSelectVoice={handleSelectVoice}
         playbackSpeed={playbackSpeed}
         onChangeSpeed={handleChangeSpeed}
+        wordPauseMs={wordPauseMs}
+        onChangeWordPause={handleChangeWordPause}
+        speakPunctuation={speakPunctuation}
+        onToggleSpeakPunctuation={handleToggleSpeakPunctuation}
       />
 
-      {/* Phase 7: Inline Manual Text & OCR Correction Modal */}
+      {/* Inline Manual Text & OCR Correction Modal */}
       <InlineTextEditorModal
         isOpen={isTextEditorOpen}
         onClose={() => setIsTextEditorOpen(false)}
@@ -396,7 +540,7 @@ export default function App() {
         onSave={handleSaveEditedText}
       />
 
-      {/* Phase 7: Photo Orientation Pre-Processing Modal */}
+      {/* Photo Orientation Pre-Processing Modal */}
       <PhotoOrientationModal
         isOpen={isOrientationModalOpen}
         onClose={() => {
@@ -411,7 +555,7 @@ export default function App() {
         }}
       />
 
-      {/* On-Brand Extraction & OCR Loading Overlay */}
+      {/* Extraction & OCR Loading Overlay */}
       {isExtracting && (
         <ExtractionLoader
           progress={extractionProgress}

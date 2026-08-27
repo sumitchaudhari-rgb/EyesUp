@@ -1,9 +1,11 @@
 import React from 'react';
-import { BookOpen, Command, Volume2, Sparkles, FileText, Upload, Sliders } from 'lucide-react';
+import { BookOpen, Command, Volume2, Sparkles, FileText, Upload, Sliders, Mic, MicOff } from 'lucide-react';
 
 export default function Header({ 
   hasDoc, 
   docTitle, 
+  isVoiceControlActive,
+  onToggleVoiceControl,
   onResetDoc, 
   onOpenShortcuts,
   onOpenVoiceSettings,
@@ -32,6 +34,20 @@ export default function Header({
 
         {/* Current Document Pill / Actions */}
         <div className="flex items-center gap-2 sm:gap-3">
+          {/* Hands-Free Voice Command Listener Toggle */}
+          <button
+            onClick={onToggleVoiceControl}
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all shadow-sm active:scale-95 border ${
+              isVoiceControlActive
+                ? 'bg-emerald-600 text-white border-emerald-700 shadow-emerald-500/20 ring-2 ring-emerald-400/50 animate-pulse'
+                : 'bg-cream-200 hover:bg-cream-300 text-indigo-pen border-cream-400'
+            }`}
+            title="Enable Voice Commands ('pause', 'repeat', 'repeat line', 'continue') without touching screen"
+          >
+            {isVoiceControlActive ? <Mic className="w-3.5 h-3.5" /> : <MicOff className="w-3.5 h-3.5 text-indigo-muted" />}
+            <span>{isVoiceControlActive ? 'Voice Cmd: ON' : 'Voice Cmd: OFF'}</span>
+          </button>
+
           {hasDoc ? (
             <div className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-cream-200/80 border border-cream-300 text-xs font-medium text-indigo-pen max-w-xs truncate">
               <FileText className="w-3.5 h-3.5 text-indigo-muted flex-shrink-0" />
@@ -60,17 +76,17 @@ export default function Header({
             title="Configure speech voice & speed"
           >
             <Sliders className="w-3.5 h-3.5 text-indigo-muted" />
-            <span className="hidden sm:inline">Voice</span>
+            <span className="hidden sm:inline">Settings</span>
           </button>
 
           {/* Keyboard Shortcuts Trigger */}
           <button
             onClick={onOpenShortcuts}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-cream-200 hover:bg-cream-300 text-indigo-pen text-xs font-medium border border-cream-400 transition-colors"
-            title="Keyboard shortcuts (Space, Arrow keys)"
+            title="Keyboard & voice shortcuts"
           >
             <Command className="w-3.5 h-3.5 text-indigo-muted" />
-            <span className="hidden sm:inline">Shortcuts</span>
+            <span className="hidden sm:inline">Commands</span>
             <kbd className="hidden sm:inline-block px-1.5 py-0.5 text-[10px] font-mono bg-cream-50 rounded border border-cream-400 text-indigo-pen">
               ?
             </kbd>

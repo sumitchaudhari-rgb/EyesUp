@@ -1,23 +1,32 @@
 import * as pdfjsLib from 'pdfjs-dist';
+import pdfjsWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { cleanRawText, splitIntoSentences } from './textCleaner';
 
-// Configure PDF.js worker
+// Configure bundled local PDF.js worker (100% offline & local)
 if (typeof window !== 'undefined') {
-  pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version || '3.11.174'}/pdf.worker.min.js`;
+  try {
+    pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
+  } catch (e) {
+    console.warn("Could not set local PDF worker URL, using fallback:", e);
+    pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.js`;
+  }
 }
 
 /**
- * Extracts text from a PDF file using PDF.js
- * @param {File} file - PDF file object
- * @param {Function} onProgress - Progress callback ({ stage, percent, current, total })
- * @returns {Promise<{ title: string, totalPages: number, sentences: string[], rawText: string }>}
+ * Extracts text and sentences from a PDF file using PDF.js
  */
 export async function extractTextFromPDF(file, onProgress = () => {}) {
   try {
     onProgress({ stage: 'Loading PDF Document...', percent: 10 });
     
     const arrayBuffer = await file.arrayBuffer();
-    const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
+    const loadingTask = pdfjsLib.getDocument({ 
+      data: arrayBuffer,
+      useWorkerFetch: true,
+      isEvalSupported: false,
+      useSystemFonts: true
+    });
+    
     const pdfDoc = await loadingTask.promise;
     
     const totalPages = pdfDoc.numPages;
@@ -36,14 +45,12 @@ export async function extractTextFromPDF(file, onProgress = () => {}) {
       const page = await pdfDoc.getPage(pageNum);
       const textContent = await page.getTextContent();
       
-      // Combine text items with appropriate spacing based on layout
       let lastY;
       let pageString = '';
 
       for (const item of textContent.items) {
         if ('str' in item) {
           if (lastY !== undefined && Math.abs(item.transform[5] - lastY) > 5) {
-            // New line if Y coordinates shift significantly
             pageString += '\n' + item.str;
           } else {
             pageString += (pageString.endsWith(' ') || item.str.startsWith(' ') ? '' : ' ') + item.str;
@@ -53,7 +60,7 @@ export async function extractTextFromPDF(file, onProgress = () => {}) {
       }
 
       pageTexts.push(pageString);
-      fullRawText += pageString + '\n\n';
+      fullRawText += pageString + ' ';
     }
 
     onProgress({ stage: 'Structuring and segmenting sentences...', percent: 95 });
@@ -61,7 +68,6 @@ export async function extractTextFromPDF(file, onProgress = () => {}) {
     const cleanedText = cleanRawText(fullRawText);
     const sentences = splitIntoSentences(cleanedText);
 
-    // If PDF yielded almost no selectable text, it's likely a scanned image PDF
     if (sentences.length === 0 || cleanedText.length < 20) {
       throw new Error("SCANNED_PDF_DETECTED");
     }
@@ -85,7 +91,7 @@ export async function extractTextFromPDF(file, onProgress = () => {}) {
 }
 
 /**
- * Renders a specific page of a PDF to an HTML canvas (used for scanned PDF fallback)
+ * Renders a specific page of a PDF to an HTML canvas
  */
 export async function renderPdfPageToCanvas(pdfData, pageNum = 1, scale = 1.5) {
   const loadingTask = pdfjsLib.getDocument({ data: pdfData });

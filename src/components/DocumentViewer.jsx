@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { FileText, ZoomIn, ZoomOut, Edit3, ChevronLeft, ChevronRight } from 'lucide-react';
+import { FileText, ZoomIn, ZoomOut, Edit3 } from 'lucide-react';
 
 export default function DocumentViewer({
   doc,
@@ -45,11 +45,10 @@ export default function DocumentViewer({
 
         {/* Action buttons: Edit OCR Text & Font Scaling */}
         <div className="flex items-center gap-2 flex-shrink-0">
-          {/* Edit OCR Text Button */}
           <button
             onClick={onOpenTextEditor}
             className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-cream-200 hover:bg-cream-300 text-indigo-pen text-xs font-semibold border border-cream-400 transition-colors shadow-sm active:scale-95"
-            title="Edit extracted text & correct OCR typos"
+            title="Edit extracted text & correct OCR typos (E)"
           >
             <Edit3 className="w-3.5 h-3.5 text-indigo-pen" />
             <span className="hidden sm:inline">Edit Text</span>
@@ -80,7 +79,7 @@ export default function DocumentViewer({
         </div>
       </div>
 
-      {/* Document Paper Container */}
+      {/* Document Paper Container - Continuous Flow */}
       <div 
         ref={containerRef}
         tabIndex={0}
@@ -89,41 +88,40 @@ export default function DocumentViewer({
         className="flex-1 overflow-y-auto p-5 sm:p-8 notebook-ruled bg-cream-50 scroll-smooth focus-visible:ring-2 focus-visible:ring-indigo-pen"
       >
         {/* Left red notebook margin indicator */}
-        <div className="relative pl-5 sm:pl-8 border-l-2 border-margin-red/40">
-          <div className="space-y-3 font-serif leading-relaxed" style={{ fontSize: `${fontSize}px` }}>
-            {doc.sentences.map((sentence, idx) => {
-              const isActive = idx === activeSentenceIndex;
-              return (
-                <span
-                  key={idx}
-                  ref={isActive ? activeSentenceRef : null}
-                  onClick={() => onSelectSentence(idx)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                      e.preventDefault();
-                      onSelectSentence(idx);
-                    }
-                  }}
-                  tabIndex={0}
-                  role="button"
-                  aria-pressed={isActive}
-                  className={`inline-block mr-1.5 cursor-pointer rounded px-2 py-1 transition-all duration-150 select-text focus-visible:ring-2 focus-visible:ring-indigo-pen ${
-                    isActive
-                      ? 'active-sentence-highlight font-semibold text-indigo-deep'
-                      : 'hover:bg-cream-200/80 text-indigo-pen/90'
-                  }`}
-                  title={`Sentence ${idx + 1} (Click to jump & read aloud)`}
-                >
-                  <span className={`text-[10px] font-mono select-none mr-1 align-top inline-flex items-center gap-0.5 ${
-                    isActive ? 'text-indigo-deep font-bold' : 'text-indigo-muted/50'
-                  }`}>
-                    {idx + 1}
-                  </span>
-                  {sentence}{' '}
+        <div className="relative pl-5 sm:pl-8 border-l-2 border-margin-red/40 font-serif leading-relaxed" style={{ fontSize: `${fontSize}px` }}>
+          {doc.sentences.map((sentence, idx) => {
+            const isActive = idx === activeSentenceIndex;
+
+            return (
+              <span
+                key={idx}
+                ref={isActive ? activeSentenceRef : null}
+                onClick={() => onSelectSentence(idx)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    onSelectSentence(idx);
+                  }
+                }}
+                tabIndex={0}
+                role="button"
+                aria-pressed={isActive}
+                className={`inline-block mr-1.5 mb-1.5 cursor-pointer rounded px-2 py-1 transition-all duration-150 select-text focus-visible:ring-2 focus-visible:ring-indigo-pen ${
+                  isActive
+                    ? 'active-sentence-highlight font-semibold text-indigo-deep'
+                    : 'hover:bg-cream-200/80 text-indigo-pen/90'
+                }`}
+                title={`Sentence ${idx + 1} of ${doc.sentences.length}`}
+              >
+                <span className={`text-[10px] font-mono select-none mr-1 align-top inline-flex items-center gap-0.5 ${
+                  isActive ? 'text-indigo-deep font-bold' : 'text-indigo-muted/50'
+                }`}>
+                  {idx + 1}
                 </span>
-              );
-            })}
-          </div>
+                {sentence}{' '}
+              </span>
+            );
+          })}
         </div>
       </div>
 
@@ -132,7 +130,7 @@ export default function DocumentViewer({
         <div className="flex items-center gap-2">
           <span className={`w-2 h-2 rounded-full ${isPlaying ? 'bg-emerald-500 animate-ping' : 'bg-emerald-500'}`} />
           <span aria-live="polite">
-            {isPlaying ? 'Speaking active sentence...' : 'Ready for hands-free playback'}
+            {isPlaying ? 'Reading aloud in Indian accent...' : 'Ready for hands-free study'}
           </span>
         </div>
         <div className="text-[11px] font-mono">

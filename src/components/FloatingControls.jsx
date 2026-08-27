@@ -5,10 +5,14 @@ import {
   SkipBack, 
   SkipForward, 
   RotateCcw, 
-  Volume2, 
   Repeat, 
-  SlidersHorizontal 
+  Clock,
+  Mic,
+  MicOff,
+  MessageSquare
 } from 'lucide-react';
+
+const PAUSE_CYCLE = [0, 300, 500, 800, 1200];
 
 export default function FloatingControls({
   doc,
@@ -16,24 +20,36 @@ export default function FloatingControls({
   isPlaying,
   playbackSpeed,
   repeatMode,
+  wordPauseMs,
+  speakPunctuation,
+  onToggleSpeakPunctuation,
+  isVoiceControlActive,
+  onToggleVoiceControl,
   onToggleRepeat,
   onTogglePlay,
   onNextSentence,
   onPrevSentence,
   onRestartSentence,
   onCycleSpeed,
+  onChangeWordPause,
   onOpenVoiceModal
 }) {
   const currentSentence = doc.sentences[activeSentenceIndex] || "";
   const progressPercent = Math.round(((activeSentenceIndex + 1) / doc.sentences.length) * 100) || 0;
 
+  const handleCyclePause = () => {
+    const currentIndex = PAUSE_CYCLE.indexOf(wordPauseMs);
+    const nextIndex = (currentIndex + 1) % PAUSE_CYCLE.length;
+    onChangeWordPause(PAUSE_CYCLE[nextIndex]);
+  };
+
   return (
-    <div className="fixed bottom-4 sm:bottom-6 left-1/2 -translate-x-1/2 z-40 w-full max-w-2xl px-3 sm:px-4 pointer-events-auto transition-all animate-fade-in">
-      <div className="bg-indigo-deep/95 backdrop-blur-xl text-cream-50 rounded-2xl sm:rounded-3xl p-3 sm:p-4 shadow-float-bar border border-indigo-wash/40 space-y-2">
+    <div className="fixed bottom-4 sm:bottom-6 left-1/2 -translate-x-1/2 z-40 w-full max-w-3xl px-3 sm:px-4 pointer-events-auto transition-all animate-fade-in">
+      <div className="bg-indigo-deep/95 backdrop-blur-xl text-cream-50 rounded-2xl sm:rounded-3xl p-3 sm:p-4 shadow-float-bar border border-indigo-wash/40 space-y-2.5">
         {/* Top sentence ticker & status */}
-        <div className="flex items-center justify-between gap-3 px-2 border-b border-indigo-wash/30 pb-2">
+        <div className="flex items-center justify-between gap-3 px-2 border-b border-indigo-wash/30 pb-2 flex-wrap sm:flex-nowrap">
           <div className="flex items-center gap-2 min-w-0">
-            {/* Audio Waveform animation during speech */}
+            {/* Waveform animation */}
             <div className="flex items-end gap-0.5 h-3.5 w-4 flex-shrink-0">
               <span className={`w-1 bg-highlighter rounded-full transition-all ${isPlaying ? 'h-3.5 animate-pulse' : 'h-1.5'}`} />
               <span className={`w-1 bg-highlighter rounded-full transition-all ${isPlaying ? 'h-2 animate-bounce' : 'h-1'}`} />
@@ -49,16 +65,58 @@ export default function FloatingControls({
             </div>
           </div>
 
-          <div className="flex items-center gap-2 flex-shrink-0">
+          <div className="flex items-center gap-1.5 flex-shrink-0">
+            {/* Voice Command Mic Trigger */}
+            <button
+              onClick={onToggleVoiceControl}
+              className={`px-2 py-0.5 rounded-md text-[11px] font-mono flex items-center gap-1 border transition-all ${
+                isVoiceControlActive 
+                  ? 'bg-emerald-500 text-white border-emerald-400 font-bold animate-pulse' 
+                  : 'bg-indigo-pen text-cream-300 border-indigo-wash/60 hover:text-cream-50'
+              }`}
+              title="Voice commands: 'pause', 'play', 'repeat', 'repeat line' (V)"
+            >
+              {isVoiceControlActive ? <Mic className="w-3 h-3" /> : <MicOff className="w-3 h-3" />}
+              <span>{isVoiceControlActive ? 'Mic ON' : 'Mic'}</span>
+            </button>
+
+            {/* Punctuation Dictation Button */}
+            <button
+              onClick={onToggleSpeakPunctuation}
+              className={`px-2 py-0.5 rounded-md text-[11px] font-mono flex items-center gap-1 border transition-colors ${
+                speakPunctuation
+                  ? 'bg-amber-100 text-amber-900 border-amber-300 font-bold'
+                  : 'bg-indigo-pen text-cream-300 border-indigo-wash/60 hover:text-cream-50'
+              }`}
+              title="Speaks punctuation aloud: 'comma', 'full stop' (U)"
+            >
+              <MessageSquare className="w-3 h-3" />
+              <span>{speakPunctuation ? 'Punctuation' : 'No Punct.'}</span>
+            </button>
+
+            {/* Word Pause Button */}
+            <button
+              onClick={handleCyclePause}
+              className={`px-2 py-0.5 rounded-md text-[11px] font-mono flex items-center gap-1 border transition-colors ${
+                wordPauseMs > 0
+                  ? 'bg-highlighter text-indigo-deep border-highlighter font-bold'
+                  : 'bg-indigo-pen text-cream-300 border-indigo-wash/60 hover:text-cream-50'
+              }`}
+              title="Cycle pause after each word: 0s -> 0.3s -> 0.5s -> 0.8s -> 1.2s (P)"
+            >
+              <Clock className="w-3 h-3" />
+              <span>{wordPauseMs === 0 ? 'No Pause' : `${(wordPauseMs / 1000).toFixed(1)}s`}</span>
+            </button>
+
             {/* Repeat Mode Indicator */}
             <button
               onClick={onToggleRepeat}
               className={`px-2 py-0.5 rounded-md text-[11px] font-mono flex items-center gap-1 border transition-colors ${
                 repeatMode 
-                  ? 'bg-highlighter text-indigo-deep border-highlighter font-bold' 
+                  ? 'bg-amber-100 text-amber-900 border-amber-300 font-bold' 
                   : 'bg-indigo-pen text-cream-300 border-indigo-wash/60 hover:text-cream-50'
               }`}
-              title="Repeat active sentence indefinitely (useful for slow dictation)"
+              title="Repeat active sentence indefinitely (T)"
             >
               <Repeat className="w-3 h-3" />
               <span>{repeatMode ? 'Looping' : 'Loop'}</span>
@@ -70,14 +128,13 @@ export default function FloatingControls({
           </div>
         </div>
 
-        {/* Transport Action Bar with Large Touch Targets (Min 48px) */}
+        {/* Transport Action Bar */}
         <div className="flex items-center justify-between gap-2 pt-0.5">
-          {/* Left: Prev & Restart */}
           <div className="flex items-center gap-1.5">
             <button
               onClick={onRestartSentence}
               className="w-11 h-11 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl bg-indigo-pen hover:bg-indigo-wash active:scale-95 text-cream-100 border border-indigo-wash/50 flex items-center justify-center transition-all"
-              title="Repeat current sentence from start (R)"
+              title="Repeat line from start (or say 'repeat line' / press R)"
               aria-label="Restart sentence"
             >
               <RotateCcw className="w-5 h-5" />
@@ -87,18 +144,18 @@ export default function FloatingControls({
               onClick={onPrevSentence}
               disabled={activeSentenceIndex === 0}
               className="w-11 h-11 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl bg-indigo-pen hover:bg-indigo-wash disabled:opacity-30 active:scale-95 text-cream-100 border border-indigo-wash/50 flex items-center justify-center transition-all"
-              title="Previous sentence (Left Arrow)"
+              title="Previous sentence (Left Arrow / 'back')"
               aria-label="Previous sentence"
             >
               <SkipBack className="w-5 h-5" />
             </button>
           </div>
 
-          {/* Center: Hero Big Play/Pause Button */}
+          {/* Center Play/Pause */}
           <button
             onClick={onTogglePlay}
-            className="flex-1 max-w-[200px] h-12 sm:h-14 rounded-xl sm:rounded-2xl bg-highlighter hover:bg-highlighter-hover active:scale-95 text-indigo-deep font-bold flex items-center justify-center gap-2 shadow-lg shadow-highlighter/20 border border-highlighter-border transition-all ring-2 ring-highlighter-glow/50"
-            title="Play / Pause (Spacebar)"
+            className="flex-1 max-w-[240px] h-12 sm:h-14 rounded-xl sm:rounded-2xl bg-highlighter hover:bg-highlighter-hover active:scale-95 text-indigo-deep font-bold flex items-center justify-center gap-2 shadow-lg shadow-highlighter/20 border border-highlighter-border transition-all ring-2 ring-highlighter-glow/50"
+            title="Play / Pause (Spacebar / say 'play' or 'pause')"
             aria-label={isPlaying ? "Pause speech" : "Read aloud"}
           >
             {isPlaying ? (
@@ -114,23 +171,21 @@ export default function FloatingControls({
             )}
           </button>
 
-          {/* Right: Next & Speed Cycle */}
           <div className="flex items-center gap-1.5">
             <button
               onClick={onNextSentence}
               disabled={activeSentenceIndex >= doc.sentences.length - 1}
               className="w-11 h-11 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl bg-indigo-pen hover:bg-indigo-wash disabled:opacity-30 active:scale-95 text-cream-100 border border-indigo-wash/50 flex items-center justify-center transition-all"
-              title="Next sentence (Right Arrow)"
+              title="Next sentence (Right Arrow / 'next')"
               aria-label="Next sentence"
             >
               <SkipForward className="w-5 h-5" />
             </button>
 
-            {/* Quick Speed Cycle Pill */}
             <button
               onClick={onCycleSpeed}
               className="h-11 sm:h-12 px-3 rounded-xl sm:rounded-2xl bg-indigo-pen hover:bg-indigo-wash text-cream-100 border border-indigo-wash/50 font-mono text-xs font-bold flex items-center justify-center transition-all active:scale-95"
-              title="Click to cycle speed: 0.8x -> 1.0x -> 1.25x -> 1.5x"
+              title="Cycle speed: 0.25x -> 0.5x -> 0.75x -> 1.0x -> 1.25x -> 1.5x -> 2.0x ([ / ])"
             >
               {playbackSpeed}x
             </button>

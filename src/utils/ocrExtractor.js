@@ -2,10 +2,7 @@ import { createWorker } from 'tesseract.js';
 import { cleanRawText, splitIntoSentences } from './textCleaner';
 
 /**
- * Pre-processes an image file on canvas to optimize OCR text recognition:
- * - Resizes if excessively large to prevent memory crashes
- * - Converts to high-contrast grayscale
- * - Normalizes lighting variations
+ * Pre-processes an image file on canvas to optimize OCR text recognition
  */
 export async function preprocessImage(imageSource) {
   return new Promise((resolve, reject) => {
@@ -17,7 +14,6 @@ export async function preprocessImage(imageSource) {
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
 
-        // Scale image within reasonable boundaries (max 2400px wide for optimal OCR)
         let width = img.width;
         let height = img.height;
         const maxDim = 2400;
@@ -35,18 +31,13 @@ export async function preprocessImage(imageSource) {
         canvas.width = width;
         canvas.height = height;
 
-        // Draw image
         ctx.drawImage(img, 0, 0, width, height);
 
-        // Apply grayscale & contrast enhancement
         const imageData = ctx.getImageData(0, 0, width, height);
         const data = imageData.data;
 
         for (let i = 0; i < data.length; i += 4) {
-          // Standard luminosity weights: 0.299 R + 0.587 G + 0.114 B
           const gray = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
-
-          // Simple dynamic thresholding / contrast stretch
           const contrast = 1.25;
           const factor = (259 * (contrast * 255 + 255)) / (255 * (259 - contrast * 255));
           const adjusted = factor * (gray - 128) + 128;
@@ -60,7 +51,6 @@ export async function preprocessImage(imageSource) {
         ctx.putImageData(imageData, 0, 0);
         resolve(canvas.toDataURL('image/png'));
       } catch (err) {
-        // If canvas processing fails, fallback to original source
         console.warn("Canvas pre-processing warning, falling back to raw image:", err);
         resolve(imageSource);
       }
@@ -77,10 +67,7 @@ export async function preprocessImage(imageSource) {
 }
 
 /**
- * Extracts text from an image or photo using Tesseract.js OCR
- * @param {File|Blob|string} imageFile - Image file or URL
- * @param {Function} onProgress - Progress callback ({ stage, percent })
- * @returns {Promise<{ title: string, totalPages: number, sentences: string[], rawText: string, confidence: number }>}
+ * Extracts text and sentences from an image or photo using Tesseract.js OCR
  */
 export async function extractTextFromImage(imageFile, onProgress = () => {}) {
   let worker = null;
