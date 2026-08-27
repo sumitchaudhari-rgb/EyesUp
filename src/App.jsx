@@ -1,21 +1,25 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import Header from './components/Header';
 import EmptyState from './components/EmptyState';
 import SplitView from './components/SplitView';
 import FloatingControls from './components/FloatingControls';
 import KeyboardShortcutsModal from './components/KeyboardShortcutsModal';
+import VoiceSettingsModal from './components/VoiceSettingsModal';
 import ExtractionLoader from './components/ExtractionLoader';
 import ErrorAlert from './components/ErrorAlert';
 import { sampleDocument } from './data/sampleDocument';
 import { extractTextFromPDF } from './utils/pdfExtractor';
 import { extractTextFromImage } from './utils/ocrExtractor';
+import { speechEngine } from './utils/speechEngine';
 
 export default function App() {
   const [currentDoc, setCurrentDoc] = useState(null);
   const [activeSentenceIndex, setActiveSentenceIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [playbackSpeed, setPlaybackSpeed] = useState(1.0);
+  const [selectedVoiceURI, setSelectedVoiceURI] = useState('');
   const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
+  const [isVoiceModalOpen, setIsVoiceModalOpen] = useState(false);
 
   // Extraction & OCR state
   const [isExtracting, setIsExtracting] = useState(false);
@@ -23,8 +27,26 @@ export default function App() {
   const [currentFileProcessing, setCurrentFileProcessing] = useState(null);
   const [errorMessage, setErrorMessage] = useState(null);
 
+  // Refs for tracking current state inside callbacks
+  const docRef = useRef(currentDoc);
+  const activeIndexRef = useRef(activeSentenceIndex);
+  const isPlayingRef = useRef(isPlaying);
+
+  useEffect(() => {
+    docRef.current = currentDoc;
+  }, [currentDoc]);
+
+  useEffect(() => {
+    activeIndexRef.current = activeSentenceIndex;
+  }, [activeSentenceIndex]);
+
+  useEffect(() => {
+    isPlayingRef.current = isPlaying;
+  }, [isPlaying]);
+
   // Load sample document for instant preview
   const handleLoadSample = () => {
+    speechEngine.stop();
     setCurrentDoc(sampleDocument);
     setActiveSentenceIndex(0);
     setIsPlaying(false);
@@ -33,16 +55,112 @@ export default function App() {
 
   // Reset / Change document
   const handleResetDoc = () => {
+    speechEngine.stop();
     setCurrentDoc(null);
     setActiveSentenceIndex(0);
     setIsPlaying(false);
     setErrorMessage(null);
   };
 
-  // Real File Upload & OCR Extraction Pipeline (Phase 2)
+  // Speak a sentence by index
+  const speakSentenceAtIndex = useCallback((index) => {
+    const doc = docRef.current;
+    if (!doc || !doc.sentences || index < 0 || index >= doc.sentences.length) {
+      setIsPlaying(false);
+      return;
+    }
+    const text = doc.sentences[index];
+    setActiveSentenceIndex(index);
+    setIsPlaying(true);
+    speechEngine.speak(text, index);
+  }, []);
+
+  // Web Speech API lifecycle bindings
+  useEffect(() => {
+    speechEngine.onSentenceEnd = ({ sentenceIndex }) => {
+      const doc = docRef.current;
+      if (!doc || !isPlayingRef.current) return;
+
+      const nextIndex = sentenceIndex + 1;
+      if (nextIndex < doc.sentences.length) {
+        // Auto-advance to next sentence seamlessly
+        speakSentenceAtIndex(nextIndex);
+      } else {
+        // Finished last sentence
+        setIsPlaying(false);
+      }
+    };
+
+    speechEngine.onError = (err) => {
+      console.warn("TTS Error notice:", err);
+      setIsPlaying(false);
+    };
+
+    return () => {
+      speechEngine.stop();
+    };
+  }, [speakSentenceAtIndex]);
+
+  // Play / Pause toggle
+  const handleTogglePlay = useCallback(() => {
+    if (isPlayingRef.current) {
+      speechEngine.stop();
+      setIsPlaying(false);
+    } else {
+      speakSentenceAtIndex(activeIndexRef.current);
+    }
+  }, [speakSentenceAtIndex]);
+
+  // Next / Previous / Restart sentence handlers
+  const handleNextSentence = useCallback(() => {
+    const doc = docRef.current;
+    if (!doc) return;
+    const nextIdx = Math.min(activeIndexRef.current + 1, doc.sentences.length - 1);
+    if (isPlayingRef.current) {
+      speakSentenceAtIndex(nextIdx);
+    } else {
+      setActiveSentenceIndex(nextIdx);
+    }
+  }, [speakSentenceAtIndex]);
+
+  const handlePrevSentence = useCallback(() => {
+    const doc = docRef.current;
+    if (!doc) return;
+    const prevIdx = Math.max(activeIndexRef.current - 1, 0);
+    if (isPlayingRef.current) {
+      speakSentenceAtIndex(prevIdx);
+    } else {
+      setActiveSentenceIndex(prevIdx);
+    }
+  }, [speakSentenceAtIndex]);
+
+  const handleRestartSentence = useCallback(() => {
+    speakSentenceAtIndex(activeIndexRef.current);
+  }, [speakSentenceAtIndex]);
+
+  const handleSelectSentence = useCallback((idx) => {
+    speakSentenceAtIndex(idx);
+  }, [speakSentenceAtIndex]);
+
+  const handleChangeSpeed = useCallback((speed) => {
+    setPlaybackSpeed(speed);
+    speechEngine.setRate(speed);
+    // If currently speaking, restart current sentence with new rate
+    if (isPlayingRef.current) {
+      speakSentenceAtIndex(activeIndexRef.current);
+    }
+  }, [speakSentenceAtIndex]);
+
+  const handleSelectVoice = useCallback((voiceURI) => {
+    setSelectedVoiceURI(voiceURI);
+    speechEngine.setVoice(voiceURI);
+  }, []);
+
+  // Real File Upload & OCR Extraction Pipeline
   const handleFileUpload = async (file) => {
     if (!file) return;
 
+    speechEngine.stop();
     setCurrentFileProcessing(file);
     setIsExtracting(true);
     setExtractionProgress({ stage: 'Analyzing file format...', percent: 10 });
@@ -79,39 +197,9 @@ export default function App() {
     }
   };
 
-  // Sentence Navigation Handlers
-  const handleNextSentence = useCallback(() => {
-    if (!currentDoc) return;
-    setActiveSentenceIndex((prev) => 
-      Math.min(prev + 1, currentDoc.sentences.length - 1)
-    );
-  }, [currentDoc]);
-
-  const handlePrevSentence = useCallback(() => {
-    if (!currentDoc) return;
-    setActiveSentenceIndex((prev) => Math.max(prev - 1, 0));
-  }, [currentDoc]);
-
-  const handleRestartSentence = useCallback(() => {
-    setIsPlaying(true);
-  }, []);
-
-  const handleTogglePlay = useCallback(() => {
-    setIsPlaying((prev) => !prev);
-  }, []);
-
-  const handleSelectSentence = (idx) => {
-    setActiveSentenceIndex(idx);
-  };
-
-  const handleChangeSpeed = (speed) => {
-    setPlaybackSpeed(speed);
-  };
-
   // Global Keyboard Shortcuts (Spacebar, Arrows, 'r', '?')
   useEffect(() => {
     const handleKeyDown = (e) => {
-      // Don't intercept when typing in inputs/textareas
       if (['INPUT', 'TEXTAREA'].includes(e.target.tagName)) return;
 
       if (e.code === 'Space') {
@@ -131,6 +219,7 @@ export default function App() {
         setIsShortcutsOpen((prev) => !prev);
       } else if (e.code === 'Escape') {
         setIsShortcutsOpen(false);
+        setIsVoiceModalOpen(false);
         setErrorMessage(null);
       }
     };
@@ -147,6 +236,7 @@ export default function App() {
         docTitle={currentDoc?.title}
         onResetDoc={handleResetDoc}
         onOpenShortcuts={() => setIsShortcutsOpen(true)}
+        onOpenVoiceSettings={() => setIsVoiceModalOpen(true)}
         onLoadSample={handleLoadSample}
       />
 
@@ -186,6 +276,16 @@ export default function App() {
         />
       )}
 
+      {/* Voice & Audio Settings Modal */}
+      <VoiceSettingsModal
+        isOpen={isVoiceModalOpen}
+        onClose={() => setIsVoiceModalOpen(false)}
+        selectedVoiceURI={selectedVoiceURI}
+        onSelectVoice={handleSelectVoice}
+        playbackSpeed={playbackSpeed}
+        onChangeSpeed={handleChangeSpeed}
+      />
+
       {/* Phase 2: On-Brand Extraction & OCR Loading Overlay */}
       {isExtracting && (
         <ExtractionLoader
@@ -196,7 +296,7 @@ export default function App() {
         />
       )}
 
-      {/* Phase 2: Error Notification Modal */}
+      {/* Error Notification Modal */}
       {errorMessage && (
         <ErrorAlert
           error={errorMessage}

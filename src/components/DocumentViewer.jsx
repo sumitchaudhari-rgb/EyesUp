@@ -1,17 +1,29 @@
-import React, { useState } from 'react';
-import { FileText, ZoomIn, ZoomOut, CheckCircle2, RefreshCw, ChevronLeft, ChevronRight, Edit3 } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { FileText, ZoomIn, ZoomOut, CheckCircle2, Volume2, Sparkles } from 'lucide-react';
 
 export default function DocumentViewer({
   doc,
   activeSentenceIndex,
-  onSelectSentence,
-  onUpdateSentence
+  isPlaying,
+  onSelectSentence
 }) {
   const [fontSize, setFontSize] = useState(18); // px
-  const [isEditing, setIsEditing] = useState(false);
+  const activeSentenceRef = useRef(null);
+  const containerRef = useRef(null);
 
   const increaseFont = () => setFontSize((prev) => Math.min(prev + 2, 28));
   const decreaseFont = () => setFontSize((prev) => Math.max(prev - 2, 14));
+
+  // Smoothly auto-scroll the active sentence into center view as speech progresses
+  useEffect(() => {
+    if (activeSentenceRef.current && containerRef.current) {
+      activeSentenceRef.current.scrollIntoView({
+        behavior: 'smooth',
+        block: 'center',
+        inline: 'nearest'
+      });
+    }
+  }, [activeSentenceIndex]);
 
   return (
     <div className="flex flex-col h-full bg-cream-50 rounded-2xl border border-cream-300 shadow-page overflow-hidden">
@@ -27,7 +39,7 @@ export default function DocumentViewer({
           </span>
         </div>
 
-        {/* Font scaling and view toggle */}
+        {/* Font scaling controls */}
         <div className="flex items-center gap-1.5 flex-shrink-0">
           <button
             onClick={decreaseFont}
@@ -48,7 +60,10 @@ export default function DocumentViewer({
       </div>
 
       {/* Document Paper Container */}
-      <div className="flex-1 overflow-y-auto p-6 sm:p-8 notebook-ruled bg-cream-50">
+      <div 
+        ref={containerRef}
+        className="flex-1 overflow-y-auto p-6 sm:p-8 notebook-ruled bg-cream-50 scroll-smooth"
+      >
         {/* Left red notebook margin indicator */}
         <div className="relative pl-6 sm:pl-8 border-l-2 border-margin-red/40">
           <div className="space-y-3 font-serif leading-relaxed" style={{ fontSize: `${fontSize}px` }}>
@@ -57,15 +72,18 @@ export default function DocumentViewer({
               return (
                 <span
                   key={idx}
+                  ref={isActive ? activeSentenceRef : null}
                   onClick={() => onSelectSentence(idx)}
-                  className={`inline-block mr-1.5 cursor-pointer rounded px-1.5 py-0.5 transition-all duration-150 ${
+                  className={`inline-block mr-1.5 cursor-pointer rounded px-2 py-1 transition-all duration-200 select-text ${
                     isActive
-                      ? 'active-sentence-highlight font-semibold text-indigo-deep'
+                      ? 'active-sentence-highlight font-semibold text-indigo-deep scale-[1.01]'
                       : 'hover:bg-cream-200/80 text-indigo-pen/90'
                   }`}
-                  title={`Sentence ${idx + 1} of ${doc.sentences.length} (Click to jump here)`}
+                  title={`Sentence ${idx + 1} (Click to jump & read aloud)`}
                 >
-                  <span className="text-[10px] font-mono text-indigo-muted/50 align-top select-none mr-1">
+                  <span className={`text-[10px] font-mono select-none mr-1 align-top ${
+                    isActive ? 'text-indigo-deep font-bold' : 'text-indigo-muted/50'
+                  }`}>
                     {idx + 1}
                   </span>
                   {sentence}{' '}
@@ -79,8 +97,8 @@ export default function DocumentViewer({
       {/* Document Footer Navigation */}
       <div className="px-5 py-2.5 border-t border-cream-300 bg-cream-100/90 flex items-center justify-between text-xs text-indigo-muted font-sans">
         <div className="flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full bg-emerald-500" />
-          <span>Extracted cleanly • Ready for audio sync</span>
+          <span className={`w-2 h-2 rounded-full ${isPlaying ? 'bg-emerald-500 animate-ping' : 'bg-emerald-500'}`} />
+          <span>{isPlaying ? 'Speaking active sentence...' : 'Ready for hands-free playback'}</span>
         </div>
         <div className="text-[11px] font-mono">
           Page 1 of {doc.totalPages || 1}

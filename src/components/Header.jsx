@@ -1,11 +1,12 @@
 import React from 'react';
-import { BookOpen, Command, Volume2, Sparkles, FileText, Upload } from 'lucide-react';
+import { BookOpen, Command, Volume2, Sparkles, FileText, Upload, Sliders } from 'lucide-react';
 
 export default function Header({ 
   hasDoc, 
   docTitle, 
   onResetDoc, 
   onOpenShortcuts,
+  onOpenVoiceSettings,
   onLoadSample 
 }) {
   return (
@@ -19,8 +20,8 @@ export default function Header({
           <div>
             <div className="flex items-center gap-2">
               <h1 className="font-serif font-bold text-xl tracking-tight text-indigo-deep">EyesUp</h1>
-              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-cream-200 text-indigo-pen/80 border border-cream-400">
-                Phase 1 Shell
+              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-100 text-emerald-800 border border-emerald-300">
+                TTS Active
               </span>
             </div>
             <p className="text-xs text-indigo-muted hidden sm:block font-sans">
@@ -51,6 +52,16 @@ export default function Header({
               <span>Try Sample Text</span>
             </button>
           )}
+
+          {/* Voice Settings Button */}
+          <button
+            onClick={onOpenVoiceSettings}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-cream-200 hover:bg-cream-300 text-indigo-pen text-xs font-medium border border-cream-400 transition-colors"
+            title="Configure speech voice & speed"
+          >
+            <Sliders className="w-3.5 h-3.5 text-indigo-muted" />
+            <span className="hidden sm:inline">Voice</span>
+          </button>
 
           {/* Keyboard Shortcuts Trigger */}
           <button
