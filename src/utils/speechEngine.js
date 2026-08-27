@@ -1,169 +1,133 @@
 import { articulatePunctuation } from './textCleaner';
 
-/**
- * Free, high-quality Indian voices from Google Cloud TTS.
- * Neural2 = highest quality (WaveNet-level but newer).
- * WaveNet = excellent quality.
- */
-const GOOGLE_INDIAN_VOICES = [
-  {
-    voiceURI: 'en-IN-Neural2-A',
-    name: 'Priya — English India (Female)',
-    lang: 'en-IN',
-    languageCode: 'en-IN',
-    quality: 'Neural2',
-    default: true
-  },
-  {
-    voiceURI: 'en-IN-Neural2-B',
-    name: 'Raj — English India (Male)',
-    lang: 'en-IN',
-    languageCode: 'en-IN',
-    quality: 'Neural2'
-  },
-  {
-    voiceURI: 'en-IN-Neural2-C',
-    name: 'Ananya — English India (Male)',
-    lang: 'en-IN',
-    languageCode: 'en-IN',
-    quality: 'Neural2'
-  },
-  {
-    voiceURI: 'en-IN-Neural2-D',
-    name: 'Meera — English India (Female)',
-    lang: 'en-IN',
-    languageCode: 'en-IN',
-    quality: 'Neural2'
-  },
-  {
-    voiceURI: 'en-IN-Wavenet-A',
-    name: 'Kaveri — English India (Female)',
-    lang: 'en-IN',
-    languageCode: 'en-IN',
-    quality: 'WaveNet'
-  },
-  {
-    voiceURI: 'en-IN-Wavenet-B',
-    name: 'Arjun — English India (Male)',
-    lang: 'en-IN',
-    languageCode: 'en-IN',
-    quality: 'WaveNet'
-  },
-  {
-    voiceURI: 'hi-IN-Neural2-A',
-    name: 'Kavya — हिंदी (Female)',
-    lang: 'hi-IN',
-    languageCode: 'hi-IN',
-    quality: 'Neural2'
-  },
-  {
-    voiceURI: 'hi-IN-Neural2-B',
-    name: 'Vikram — हिंदी (Male)',
-    lang: 'hi-IN',
-    languageCode: 'hi-IN',
-    quality: 'Neural2'
-  },
-  {
-    voiceURI: 'hi-IN-Wavenet-A',
-    name: 'Sneha — हिंदी (Female)',
-    lang: 'hi-IN',
-    languageCode: 'hi-IN',
-    quality: 'WaveNet'
-  },
-  {
-    voiceURI: 'hi-IN-Wavenet-B',
-    name: 'Rohan — हिंदी (Male)',
-    lang: 'hi-IN',
-    languageCode: 'hi-IN',
-    quality: 'WaveNet'
-  }
+// ── Static voice list (mirrors api/voices.js — used as fallback before fetch) ──
+const DEFAULT_VOICES = [
+  { voiceURI: 'en-IN-NeerjaNeural',           name: 'Neerja — English India (Female)',   lang: 'en-IN', languageCode: 'en-IN', quality: 'Neural', default: true },
+  { voiceURI: 'en-IN-PrabhatNeural',          name: 'Prabhat — English India (Male)',    lang: 'en-IN', languageCode: 'en-IN', quality: 'Neural' },
+  { voiceURI: 'en-IN-NeerjaExpressiveNeural', name: 'Neerja Expressive — English India', lang: 'en-IN', languageCode: 'en-IN', quality: 'Neural' },
+  { voiceURI: 'hi-IN-SwaraNeural',            name: 'Swara — हिंदी (Female)',            lang: 'hi-IN', languageCode: 'hi-IN', quality: 'Neural' },
+  { voiceURI: 'hi-IN-MadhurNeural',           name: 'Madhur — हिंदी (Male)',             lang: 'hi-IN', languageCode: 'hi-IN', quality: 'Neural' },
+  { voiceURI: 'ta-IN-PallaviNeural',          name: 'Pallavi — தமிழ் (Tamil)',           lang: 'ta-IN', languageCode: 'ta-IN', quality: 'Neural' },
+  { voiceURI: 'te-IN-ShrutiNeural',           name: 'Shruti — తెలుగు (Telugu)',          lang: 'te-IN', languageCode: 'te-IN', quality: 'Neural' },
+  { voiceURI: 'mr-IN-AarohiNeural',           name: 'Aarohi — मराठी (Marathi)',          lang: 'mr-IN', languageCode: 'mr-IN', quality: 'Neural' },
+  { voiceURI: 'bn-IN-TanishaaNeural',         name: 'Tanishaa — বাংলা (Bengali)',        lang: 'bn-IN', languageCode: 'bn-IN', quality: 'Neural' },
+  { voiceURI: 'kn-IN-SapnaNeural',            name: 'Sapna — ಕನ್ನಡ (Kannada)',          lang: 'kn-IN', languageCode: 'kn-IN', quality: 'Neural' },
 ];
 
 /**
- * Google Cloud TTS Engine for EyesUp
- * Replaces Web Speech API with Google Neural2/WaveNet Indian voices.
- * Uses a secure Vercel serverless proxy (/api/tts) to hide the API key.
- * Supports precise word-level highlight timing via SSML marks + timepoints.
+ * EyesUp Speech Engine — Microsoft Edge TTS (Neural Indian Voices)
+ *
+ * Architecture:
+ *   Frontend → POST /api/tts (Vercel serverless) → msedge-tts → Microsoft Neural TTS
+ *
+ * Features:
+ *   - 10 free Indian Neural voices (no API key)
+ *   - Precise word-level highlight timing via Microsoft word boundary events
+ *   - Word-pause breaks embedded in SSML on the server
+ *   - Punctuation dictation ("comma", "full stop", etc.)
+ *   - Same public interface as the original Web Speech engine (App.jsx unchanged)
  */
-class GoogleTtsEngine {
+class EdgeTtsEngine {
   constructor() {
-    this.selectedVoice = GOOGLE_INDIAN_VOICES[0];
-    this.rate = 1.0;
-    this.pitch = 0.0;       // Google TTS pitch: -20 to +20 semitones
+    this._voices = DEFAULT_VOICES;
+    this.selectedVoice = DEFAULT_VOICES[0];
+    this.rate = 1.0;        // 0.25 – 2.0
+    this.pitch = 0.0;       // semitones: -20 to +20
     this.volume = 1.0;
     this.wordPauseMs = 400;
     this.speakPunctuation = true;
 
     this.isPlaying = false;
     this.isPaused = false;
+
+    /** @type {HTMLAudioElement|null} */
     this.currentAudio = null;
+    /** @type {number[]} */
     this.wordTimers = [];
 
     this.currentSentenceText = '';
     this.currentSentenceIndex = 0;
+    /** @type {string[]} */
     this.currentWords = [];
     this.currentWordIndex = 0;
 
-    // Callbacks (same interface as browser SpeechEngine)
+    // ── Callbacks (same interface as original SpeechEngine) ──
     this.onSentenceStart = () => {};
-    this.onSentenceEnd = () => {};
-    this.onWordStart = () => {};
-    this.onError = () => {};
-    this.onStateChange = () => {};
+    this.onSentenceEnd   = () => {};
+    this.onWordStart     = () => {};
+    this.onError         = () => {};
+    this.onStateChange   = () => {};
+
+    // Pre-fetch voice list from server (updates once on startup)
+    this._fetchVoices();
   }
 
-  // ── Voice API (same interface as Web Speech engine) ──────────────────────
+  // ── Voice API ─────────────────────────────────────────────────────────────
 
-  loadVoices() {
-    return GOOGLE_INDIAN_VOICES;
-  }
+  /** Returns the current voice list (default voices until server responds). */
+  getVoices() { return this._voices; }
 
-  getVoices() {
-    return GOOGLE_INDIAN_VOICES;
-  }
+  /** @deprecated use getVoices() */
+  loadVoices() { return this._voices; }
 
+  /** Set active voice by voiceURI. */
   setVoice(voiceURI) {
-    const found = GOOGLE_INDIAN_VOICES.find(v => v.voiceURI === voiceURI);
+    const found = this._voices.find(v => v.voiceURI === voiceURI);
     if (found) this.selectedVoice = found;
   }
 
-  setRate(rate) {
-    this.rate = Math.max(0.25, Math.min(4.0, Number(rate) || 1.0));
+  async _fetchVoices() {
+    try {
+      const res = await fetch('/api/voices');
+      if (!res.ok) return;
+      const data = await res.json();
+      if (Array.isArray(data.voices) && data.voices.length > 0) {
+        this._voices = data.voices;
+      }
+    } catch (_e) {
+      // Silently use default list
+    }
   }
 
-  setPitch(pitch) {
-    // Convert from browser 0–2 range to Google's -20 to +20 semitones
-    // Browser default is 1.0 → Google 0, browser 2.0 → Google +10
-    this.pitch = Math.max(-20, Math.min(20, Number(pitch) || 0.0));
-  }
+  // ── Settings ──────────────────────────────────────────────────────────────
 
-  setVolume(vol) {
+  /** @param {number} rate — numeric (0.25–2.0) */
+  setRate(rate)    { this.rate = Math.max(0.25, Math.min(4.0, Number(rate) || 1.0)); }
+
+  /** @param {number} pitch — semitones (-20..+20) */
+  setPitch(pitch)  { this.pitch = Math.max(-20, Math.min(20, Number(pitch) || 0.0)); }
+
+  /** @param {number} vol — 0..1 */
+  setVolume(vol)   {
     this.volume = Math.max(0, Math.min(1, Number(vol) || 1.0));
     if (this.currentAudio) this.currentAudio.volume = this.volume;
   }
 
-  setWordPauseMs(ms) {
-    this.wordPauseMs = Math.max(0, Math.min(3000, Number(ms) || 0));
-  }
+  /** @param {number} ms — pause after each word (0 = fluid) */
+  setWordPauseMs(ms)        { this.wordPauseMs = Math.max(0, Math.min(3000, Number(ms) || 0)); }
 
-  setSpeakPunctuation(val) {
-    this.speakPunctuation = Boolean(val);
-  }
+  /** @param {boolean} val */
+  setSpeakPunctuation(val)  { this.speakPunctuation = Boolean(val); }
 
-  // ── Core TTS ─────────────────────────────────────────────────────────────
+  // ── Core Playback ─────────────────────────────────────────────────────────
 
+  /**
+   * Synthesize `text` via Edge TTS and play it.
+   * @param {string} text
+   * @param {number} sentenceIndex
+   */
   async speak(text, sentenceIndex = 0) {
     this.stop();
 
-    if (!text || text.trim().length === 0) return;
+    const rawText = String(text).trim();
+    if (!rawText) return;
 
-    const rawText = text.trim();
-    this.currentSentenceText = rawText;
+    this.currentSentenceText  = rawText;
     this.currentSentenceIndex = sentenceIndex;
-    this.currentWords = rawText.split(/\s+/).filter(w => w.length > 0);
-    this.currentWordIndex = 0;
-    this.isPlaying = true;
-    this.isPaused = false;
+    this.currentWords         = rawText.split(/\s+/).filter(Boolean);
+    this.currentWordIndex     = 0;
+    this.isPlaying            = true;
+    this.isPaused             = false;
 
     this.onSentenceStart({ sentenceIndex, text: rawText });
     this.onStateChange({ isPlaying: true, isPaused: false });
@@ -179,40 +143,31 @@ class GoogleTtsEngine {
 
       this._playAudio(audioBase64, timepoints, sentenceIndex);
     } catch (err) {
-      console.error('[Google TTS] Speak error:', err.message);
+      console.error('[EdgeTTS] speak() error:', err.message);
       this.isPlaying = false;
-      this.isPaused = false;
+      this.isPaused  = false;
       this.onError(err);
       this.onStateChange({ isPlaying: false, isPaused: false });
     }
   }
 
   /**
-   * Builds SSML with word marks (for precise timing) and optional pause breaks.
-   * Calls /api/tts proxy to get MP3 audio + word timepoints.
+   * POST /api/tts — returns { audioBase64, timepoints }.
+   * Server builds SSML, calls msedge-tts, returns MP3 as base64.
+   * @param {string} text
+   * @returns {Promise<{ audioBase64: string, timepoints: Array<{ markName: string, timeSeconds: number }> }>}
    */
   async _fetchAudio(text) {
-    const words = text.split(/\s+/).filter(w => w.length > 0);
-
-    // Build SSML: <mark name="w0"/>word<break time="500ms"/> ...
-    const parts = words.map((word, i) => {
-      const wordPart = `<mark name="w${i}"/>${this._escapeXml(word)}`;
-      return this.wordPauseMs > 0
-        ? `${wordPart}<break time="${this.wordPauseMs}ms"/>`
-        : wordPart;
-    });
-    const ssml = `<speak>${parts.join(' ')}</speak>`;
-
     const response = await fetch('/api/tts', {
-      method: 'POST',
+      method:  'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        ssml,
-        voiceName: this.selectedVoice.voiceURI,
-        languageCode: this.selectedVoice.languageCode,
-        speakingRate: this.rate,
-        pitch: this.pitch
-      })
+        text,
+        voice:        this.selectedVoice.voiceURI,
+        rate:         this.rate,
+        pitch:        this.pitch,
+        wordPauseMs:  this.wordPauseMs,
+      }),
     });
 
     if (!response.ok) {
@@ -220,24 +175,26 @@ class GoogleTtsEngine {
       throw new Error(errBody.error || `TTS API error ${response.status}`);
     }
 
-    return response.json(); // { audioBase64, timepoints }
+    return response.json();
   }
 
   /**
-   * Plays the base64 MP3 audio and schedules word highlight callbacks
-   * using the precise timepoints returned by Google Cloud TTS.
+   * Decodes base64 MP3, plays via HTMLAudioElement,
+   * and schedules onWordStart callbacks using server-returned timepoints.
+   * @param {string} audioBase64
+   * @param {Array<{ markName: string, timeSeconds: number }>} timepoints
+   * @param {number} sentenceIndex
    */
   _playAudio(audioBase64, timepoints, sentenceIndex) {
     const audio = new Audio(`data:audio/mp3;base64,${audioBase64}`);
     audio.volume = this.volume;
     this.currentAudio = audio;
 
-    // Schedule onWordStart callbacks from Google's timepoints
-    if (timepoints && timepoints.length > 0) {
-      timepoints.forEach((tp) => {
-        const wordIndex = parseInt(tp.markName.replace('w', ''), 10);
+    // Schedule word highlight callbacks from Microsoft's boundary timing
+    if (Array.isArray(timepoints) && timepoints.length > 0) {
+      timepoints.forEach(({ markName, timeSeconds }) => {
+        const wordIndex = parseInt(markName.replace('w', ''), 10);
         if (isNaN(wordIndex)) return;
-        const delayMs = Math.round(tp.timeSeconds * 1000);
 
         const timer = setTimeout(() => {
           if (!this.isPlaying) return;
@@ -245,101 +202,89 @@ class GoogleTtsEngine {
           this.onWordStart({
             wordIndex,
             totalWords: this.currentWords.length,
-            word: this.currentWords[wordIndex] || '',
-            sentenceIndex
+            word:       this.currentWords[wordIndex] ?? '',
+            sentenceIndex,
           });
-        }, delayMs);
+        }, Math.round(timeSeconds * 1000));
 
         this.wordTimers.push(timer);
       });
     }
 
     audio.onended = () => {
-      this.clearTimers();
+      this._clearTimers();
       if (!this.isPlaying) return;
       this.isPlaying = false;
-      this.isPaused = false;
+      this.isPaused  = false;
       this.onSentenceEnd({ sentenceIndex, text: this.currentSentenceText });
       this.onStateChange({ isPlaying: false, isPaused: false });
     };
 
     audio.onerror = () => {
-      this.clearTimers();
+      this._clearTimers();
       this.isPlaying = false;
-      this.isPaused = false;
+      this.isPaused  = false;
       this.onError(new Error('Audio playback failed'));
       this.onStateChange({ isPlaying: false, isPaused: false });
     };
 
     audio.play().catch((err) => {
       this.isPlaying = false;
-      this.isPaused = false;
+      this.isPaused  = false;
       this.onError(err);
       this.onStateChange({ isPlaying: false, isPaused: false });
     });
   }
 
+  // ── Controls ──────────────────────────────────────────────────────────────
+
   /**
-   * Repeats the previous word (1 time) then continues from that word onward.
+   * Repeat the previous word once then continue forward through the rest.
    */
   repeatPreviousWord() {
-    if (!this.currentWords || this.currentWords.length === 0) return;
-    const targetWordIdx = Math.max(0, this.currentWordIndex > 0 ? this.currentWordIndex - 1 : 0);
-    const remainingText = this.currentWords.slice(targetWordIdx).join(' ');
+    if (!this.currentWords?.length) return;
+    const targetIdx     = Math.max(0, this.currentWordIndex > 0 ? this.currentWordIndex - 1 : 0);
+    const remainingText = this.currentWords.slice(targetIdx).join(' ');
     this.stop();
-    // Restore word list and continue from previous word
-    this.currentWords = this.currentSentenceText.split(/\s+/).filter(w => w.length > 0);
+    this.currentWords = this.currentSentenceText.split(/\s+/).filter(Boolean);
     this.speak(remainingText, this.currentSentenceIndex);
   }
 
-  // ── Controls ──────────────────────────────────────────────────────────────
-
   stop() {
-    this.clearTimers();
+    this._clearTimers();
     this.isPlaying = false;
-    this.isPaused = false;
+    this.isPaused  = false;
     if (this.currentAudio) {
       this.currentAudio.pause();
       this.currentAudio.src = '';
-      this.currentAudio = null;
+      this.currentAudio     = null;
     }
     this.onStateChange({ isPlaying: false, isPaused: false });
   }
 
   pause() {
     if (!this.isPlaying || !this.currentAudio) return;
-    this.clearTimers();
+    this._clearTimers();
     this.currentAudio.pause();
     this.isPlaying = false;
-    this.isPaused = true;
+    this.isPaused  = true;
     this.onStateChange({ isPlaying: false, isPaused: true });
   }
 
   resume() {
     if (!this.isPaused) return;
     this.isPaused = false;
-    // Re-speak remaining words from current word index since audio can't resume with timing
+    // Re-synthesize remaining words (audio cannot resume mid-stream with tight timing)
     const remainingText = this.currentWords.slice(this.currentWordIndex).join(' ');
     if (remainingText.trim()) {
       this.speak(remainingText, this.currentSentenceIndex);
     }
   }
 
-  clearTimers() {
-    this.wordTimers.forEach(t => clearTimeout(t));
+  _clearTimers() {
+    this.wordTimers.forEach(clearTimeout);
     this.wordTimers = [];
-  }
-
-  // ── Helpers ───────────────────────────────────────────────────────────────
-
-  _escapeXml(str) {
-    return str
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&apos;');
   }
 }
 
-export const speechEngine = new GoogleTtsEngine();
+export const speechEngine = new EdgeTtsEngine();

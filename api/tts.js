@@ -1,75 +1,144 @@
 /**
- * Vercel Serverless Function: /api/tts
- * Proxies requests to Google Cloud Text-to-Speech API.
- * The API key is stored securely in GOOGLE_TTS_API_KEY environment variable
- * and is never exposed to the client browser.
+ * EyesUp — Edge TTS Serverless Endpoint: POST /api/tts
+ *
+ * Uses Microsoft Edge TTS (msedge-tts) — free, no API key required.
+ * Accepts plain text, builds SSML with word pauses, returns:
+ *   { audioBase64: string, timepoints: [{ markName, timeSeconds }] }
+ *
+ * The response format is intentionally identical to the Google Cloud TTS
+ * version so the frontend speechEngine.js requires zero changes.
  */
 
+'use strict';
+
+const { MsEdgeTTS, OUTPUT_FORMAT } = require('msedge-tts');
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+/**
+ * Convert numeric playback rate (0.25–2.0) to Edge TTS prosody format.
+ * 1.0 → "+0%", 1.25 → "+25%", 0.75 → "-25%"
+ */
+function formatRate(rate) {
+  const pct = Math.round((Number(rate) || 1.0) * 100) - 100;
+  return pct >= 0 ? `+${pct}%` : `${pct}%`;
+}
+
+/**
+ * Convert numeric pitch (semitones, −20..+20) to Edge TTS Hz format.
+ * 0 → "+0Hz", 3 → "+3Hz", -2 → "-2Hz"
+ */
+function formatPitch(pitch) {
+  const hz = Math.round(Number(pitch) || 0);
+  return hz >= 0 ? `+${hz}Hz` : `${hz}Hz`;
+}
+
+/** Escape special XML characters to prevent SSML injection. */
+function escapeXml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
+/**
+ * Build SSML string with prosody and optional word-pause breaks.
+ * Each word is escaped and optionally followed by a <break/> tag.
+ */
+function buildSSML(text, voice, edgeRate, edgePitch, wordPauseMs) {
+  const lang = voice.startsWith('hi-') ? 'hi-IN' : 'en-IN';
+  const words = text.split(/\s+/).filter(Boolean);
+
+  const content = words
+    .map((w) => {
+      const escaped = escapeXml(w);
+      return wordPauseMs > 0
+        ? `${escaped}<break time="${wordPauseMs}ms"/>`
+        : escaped;
+    })
+    .join(' ');
+
+  return [
+    `<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="${lang}">`,
+    `  <voice name="${voice}">`,
+    `    <prosody rate="${edgeRate}" pitch="${edgePitch}">`,
+    `      ${content}`,
+    `    </prosody>`,
+    `  </voice>`,
+    `</speak>`,
+  ].join('\n');
+}
+
+// ── Handler ───────────────────────────────────────────────────────────────────
+
 module.exports = async function handler(req, res) {
-  // Only allow POST
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
-  }
+  // CORS headers for local development
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
-  const apiKey = process.env.GOOGLE_TTS_API_KEY;
-  if (!apiKey) {
-    return res.status(500).json({
-      error: 'GOOGLE_TTS_API_KEY environment variable is not configured on this server.'
-    });
-  }
+  if (req.method === 'OPTIONS') return res.status(200).end();
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-  const { ssml, text, voiceName, languageCode, speakingRate, pitch } = req.body;
+  const {
+    text = '',
+    voice = 'en-IN-NeerjaNeural',
+    rate = 1.0,
+    pitch = 0.0,
+    wordPauseMs = 0,
+  } = req.body || {};
 
-  if ((!ssml && !text) || !voiceName || !languageCode) {
-    return res.status(400).json({
-      error: 'Missing required fields: (ssml or text), voiceName, languageCode'
-    });
+  const cleanText = String(text).trim();
+  if (!cleanText) {
+    return res.status(400).json({ error: '"text" field is required and must not be empty.' });
   }
 
   try {
-    const requestBody = {
-      input: ssml ? { ssml } : { text },
-      voice: {
-        languageCode,
-        name: voiceName
-      },
-      audioConfig: {
-        audioEncoding: 'MP3',
-        speakingRate: Math.max(0.25, Math.min(4.0, Number(speakingRate) || 1.0)),
-        pitch: Math.max(-20, Math.min(20, Number(pitch) || 0.0)),
-        volumeGainDb: 0
-      }
-    };
+    const edgeRate = formatRate(rate);
+    const edgePitch = formatPitch(pitch);
+    const ssml = buildSSML(cleanText, voice, edgeRate, edgePitch, Number(wordPauseMs) || 0);
 
-    // Enable word-level timepoints only when SSML marks are used
-    if (ssml && ssml.includes('<mark')) {
-      requestBody.enableTimePointing = ['SSML_MARK'];
-    }
+    const tts = new MsEdgeTTS();
+    await tts.setMetadata(voice, OUTPUT_FORMAT.AUDIO_24KHZ_48KBITRATE_MONO_MP3);
 
-    const ttsResponse = await fetch(
-      `https://texttospeech.googleapis.com/v1/text:synthesize?key=${apiKey}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(requestBody)
-      }
-    );
+    const { audioStream, wordBoundaryList } = tts.toStream(ssml);
 
-    const data = await ttsResponse.json();
-
-    if (!ttsResponse.ok) {
-      console.error('[EyesUp TTS] Google API error:', data?.error);
-      return res.status(ttsResponse.status).json({
-        error: data?.error?.message || 'Google Cloud TTS request failed'
-      });
-    }
-
-    return res.status(200).json({
-      audioBase64: data.audioContent,
-      timepoints: data.timepoints || []
+    // Collect audio chunks from stream
+    const chunks = [];
+    await new Promise((resolve, reject) => {
+      audioStream.on('data', (chunk) => chunks.push(chunk));
+      audioStream.on('close', resolve);
+      audioStream.on('error', reject);
     });
+
+    const audioBase64 = Buffer.concat(chunks).toString('base64');
+
+    // Resolve word boundary timings (100-ns ticks → seconds)
+    let timepoints = [];
+    try {
+      const boundaries = await wordBoundaryList;
+      if (Array.isArray(boundaries)) {
+        timepoints = boundaries.map((wb, i) => ({
+          markName: `w${i}`,
+          // Microsoft returns offset in 100-nanosecond units (ticks)
+          timeSeconds: wb.offset / 10_000_000,
+        }));
+      }
+    } catch (_e) {
+      // Word boundaries are optional; continue without them
+    }
+
+    return res.status(200).json({ audioBase64, timepoints });
   } catch (err) {
-    console.error('[EyesUp TTS] Handler error:', err.message);
-    return res.status(500).json({ error: 'Internal server error: ' + err.message });
+    console.error('[Edge TTS] Synthesis error:', err.message);
+
+    // Surface rate-limit or network errors clearly
+    if (err.message?.includes('429') || err.message?.toLowerCase().includes('rate')) {
+      return res.status(429).json({ error: 'Edge TTS rate limited. Please try again in a moment.' });
+    }
+
+    return res.status(500).json({ error: `Speech synthesis failed: ${err.message}` });
   }
 };
