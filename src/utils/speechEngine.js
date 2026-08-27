@@ -1,4 +1,5 @@
 import { articulatePunctuation } from './textCleaner';
+import { generateApiToken } from './security';
 
 // ── Static voice list (mirrors api/voices.js — used as fallback before fetch) ──
 const DEFAULT_VOICES = [
@@ -143,12 +144,77 @@ class EdgeTtsEngine {
 
       this._playAudio(audioBase64, timepoints, sentenceIndex);
     } catch (err) {
-      console.error('[EdgeTTS] speak() error:', err.message);
-      this.isPlaying = false;
-      this.isPaused  = false;
-      this.onError(err);
-      this.onStateChange({ isPlaying: false, isPaused: false });
+      console.warn('[EdgeTTS] API failed, falling back to browser speech synthesis:', err.message);
+      this._speakWithBrowserSynthesis(rawText, sentenceIndex);
     }
+  }
+
+  /**
+   * Seamless offline fallback using the browser's built-in SpeechSynthesis
+   */
+  _speakWithBrowserSynthesis(text, sentenceIndex) {
+    if (typeof window === 'undefined' || !window.speechSynthesis) {
+      this.isPlaying = false;
+      this.isPaused = false;
+      this.onError(new Error('No speech synthesis available'));
+      this.onStateChange({ isPlaying: false, isPaused: false });
+      return;
+    }
+
+    window.speechSynthesis.cancel();
+    const words = text.split(/\s+/).filter(Boolean);
+    let currentIdx = this.currentWordIndex;
+
+    const speakNextWord = () => {
+      if (!this.isPlaying || currentIdx >= words.length) {
+        this.isPlaying = false;
+        this.isPaused = false;
+        this.onSentenceEnd({ sentenceIndex, text });
+        this.onStateChange({ isPlaying: false, isPaused: false });
+        return;
+      }
+
+      this.currentWordIndex = currentIdx;
+      this.onWordStart({
+        wordIndex: currentIdx,
+        totalWords: words.length,
+        word: words[currentIdx],
+        sentenceIndex
+      });
+
+      const wordToSpeak = this.speakPunctuation
+        ? articulatePunctuation(words[currentIdx])
+        : words[currentIdx];
+
+      const utter = new SpeechSynthesisUtterance(wordToSpeak);
+      utter.rate = this.rate;
+      utter.pitch = 1.0;
+      utter.volume = this.volume;
+
+      // Try to find matching browser voice
+      const browserVoices = window.speechSynthesis.getVoices();
+      const match = browserVoices.find(v => (v.lang || '').toLowerCase().includes('in')) || browserVoices[0];
+      if (match) utter.voice = match;
+
+      utter.onend = () => {
+        currentIdx++;
+        if (this.wordPauseMs > 0) {
+          this.wordTimers.push(setTimeout(speakNextWord, this.wordPauseMs));
+        } else {
+          speakNextWord();
+        }
+      };
+
+      utter.onerror = (e) => {
+        if (e.error === 'canceled' || e.error === 'interrupted') return;
+        currentIdx++;
+        speakNextWord();
+      };
+
+      window.speechSynthesis.speak(utter);
+    };
+
+    speakNextWord();
   }
 
   /**
@@ -158,25 +224,45 @@ class EdgeTtsEngine {
    * @returns {Promise<{ audioBase64: string, timepoints: Array<{ markName: string, timeSeconds: number }> }>}
    */
   async _fetchAudio(text) {
-    const response = await fetch('/api/tts', {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        text,
-        voice:        this.selectedVoice.voiceURI,
-        rate:         this.rate,
-        pitch:        this.pitch,
-        wordPauseMs:  this.wordPauseMs,
-      }),
-    });
+    const voice = this.selectedVoice.voiceURI;
+    const { timestamp, signature } = generateApiToken(text, voice);
+
+    const payload = {
+      text,
+      voice,
+      rate:        this.rate,
+      pitch:       this.pitch,
+      wordPauseMs: this.wordPauseMs,
+      timestamp,
+      signature
+    };
+
+    console.log('[EdgeTTS] Requesting:', payload.voice, '| chars:', text.length);
+
+    let response;
+    try {
+      response = await fetch('/api/tts', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify(payload),
+      });
+    } catch (networkErr) {
+      console.error('[EdgeTTS] Network error (is /api/tts reachable?):', networkErr.message);
+      throw new Error('Cannot reach /api/tts — run `npx vercel dev` locally, or check Vercel deployment.');
+    }
 
     if (!response.ok) {
       const errBody = await response.json().catch(() => ({}));
-      throw new Error(errBody.error || `TTS API error ${response.status}`);
+      const msg = errBody.error || `TTS API error ${response.status}`;
+      console.error('[EdgeTTS] Server error:', response.status, msg);
+      throw new Error(msg);
     }
 
-    return response.json();
+    const data = await response.json();
+    console.log('[EdgeTTS] OK — audio:', data.audioBase64?.length ?? 0, 'chars | timepoints:', data.timepoints?.length ?? 0);
+    return data;
   }
+
 
   /**
    * Decodes base64 MP3, plays via HTMLAudioElement,

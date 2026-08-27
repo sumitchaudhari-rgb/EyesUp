@@ -96,8 +96,12 @@ const INDIAN_VOICES = [
 ];
 
 module.exports = function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Cache-Control', 'public, max-age=86400'); // cache 24h
+
+  const secFetchSite = req.headers['sec-fetch-site'];
+  if (secFetchSite && secFetchSite === 'cross-site') {
+    return res.status(403).json({ error: 'Access forbidden' });
+  }
 
   if (req.method !== 'GET') return res.status(405).end();
   return res.status(200).json({ voices: INDIAN_VOICES });
