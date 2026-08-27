@@ -1,11 +1,9 @@
 {
   "framework": "vite",
-  "buildCommand": "npm install --ignore-scripts=false && npm run build",
   "outputDirectory": "dist",
   "build": {
     "env": {
-      "NODE_OPTIONS": "--max-old-space-size=4096",
-      "NPM_FLAGS": "--ignore-scripts=false"
+      "NODE_OPTIONS": "--max-old-space-size=4096"
     }
   },
   "rewrites": [
