@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { FileText, ZoomIn, ZoomOut, CheckCircle2, Volume2, Sparkles } from 'lucide-react';
+import { FileText, ZoomIn, ZoomOut, PenTool, Sparkles } from 'lucide-react';
 
 export default function DocumentViewer({
   doc,
@@ -14,7 +14,7 @@ export default function DocumentViewer({
   const increaseFont = () => setFontSize((prev) => Math.min(prev + 2, 28));
   const decreaseFont = () => setFontSize((prev) => Math.max(prev - 2, 14));
 
-  // Smoothly auto-scroll the active sentence into center view as speech progresses
+  // Auto-scroll centering
   useEffect(() => {
     if (activeSentenceRef.current && containerRef.current) {
       activeSentenceRef.current.scrollIntoView({
@@ -26,15 +26,15 @@ export default function DocumentViewer({
   }, [activeSentenceIndex]);
 
   return (
-    <div className="flex flex-col h-full bg-cream-50 rounded-2xl border border-cream-300 shadow-page overflow-hidden">
+    <div className="flex flex-col h-full bg-cream-50 rounded-3xl border border-cream-300 shadow-page overflow-hidden animate-page-reveal">
       {/* Document View Top Toolbar */}
-      <div className="flex items-center justify-between px-5 py-3 border-b border-cream-300 bg-cream-100/80">
-        <div className="flex items-center gap-2 min-w-0">
+      <div className="flex items-center justify-between px-5 py-3.5 border-b border-cream-300 bg-cream-100/90 backdrop-blur-sm">
+        <div className="flex items-center gap-2.5 min-w-0">
           <FileText className="w-4 h-4 text-indigo-pen flex-shrink-0" />
           <span className="font-serif font-semibold text-sm text-indigo-deep truncate">
             {doc.title || 'Document Preview'}
           </span>
-          <span className="px-2 py-0.5 rounded text-[11px] font-mono bg-cream-200 text-indigo-muted border border-cream-300 flex-shrink-0">
+          <span className="px-2 py-0.5 rounded-md text-[11px] font-mono bg-cream-200 text-indigo-muted border border-cream-300 flex-shrink-0">
             {doc.sentences.length} sentences
           </span>
         </div>
@@ -43,7 +43,7 @@ export default function DocumentViewer({
         <div className="flex items-center gap-1.5 flex-shrink-0">
           <button
             onClick={decreaseFont}
-            className="p-1.5 rounded-lg hover:bg-cream-200 text-indigo-muted hover:text-indigo-deep transition-colors"
+            className="p-1.5 rounded-lg hover:bg-cream-200 text-indigo-muted hover:text-indigo-deep transition-colors active:scale-95"
             title="Decrease font size"
           >
             <ZoomOut className="w-4 h-4" />
@@ -51,7 +51,7 @@ export default function DocumentViewer({
           <span className="text-xs font-mono text-indigo-muted w-8 text-center">{fontSize}px</span>
           <button
             onClick={increaseFont}
-            className="p-1.5 rounded-lg hover:bg-cream-200 text-indigo-muted hover:text-indigo-deep transition-colors"
+            className="p-1.5 rounded-lg hover:bg-cream-200 text-indigo-muted hover:text-indigo-deep transition-colors active:scale-95"
             title="Increase font size"
           >
             <ZoomIn className="w-4 h-4" />
@@ -74,14 +74,14 @@ export default function DocumentViewer({
                   key={idx}
                   ref={isActive ? activeSentenceRef : null}
                   onClick={() => onSelectSentence(idx)}
-                  className={`inline-block mr-1.5 cursor-pointer rounded px-2 py-1 transition-all duration-200 select-text ${
+                  className={`inline-block mr-1.5 cursor-pointer rounded px-2 py-1 transition-all duration-150 select-text ${
                     isActive
-                      ? 'active-sentence-highlight font-semibold text-indigo-deep scale-[1.01]'
+                      ? 'active-sentence-highlight font-semibold text-indigo-deep'
                       : 'hover:bg-cream-200/80 text-indigo-pen/90'
                   }`}
-                  title={`Sentence ${idx + 1} (Click to jump & read aloud)`}
+                  title={`Sentence ${idx + 1} (Click to jump & read)`}
                 >
-                  <span className={`text-[10px] font-mono select-none mr-1 align-top ${
+                  <span className={`text-[10px] font-mono select-none mr-1 align-top inline-flex items-center gap-0.5 ${
                     isActive ? 'text-indigo-deep font-bold' : 'text-indigo-muted/50'
                   }`}>
                     {idx + 1}

@@ -6,9 +6,8 @@ import {
   SkipForward, 
   RotateCcw, 
   Volume2, 
-  Sliders, 
-  Sparkles,
-  Bookmark
+  Repeat, 
+  Sparkles 
 } from 'lucide-react';
 
 export default function PlaybackPanel({
@@ -16,6 +15,8 @@ export default function PlaybackPanel({
   activeSentenceIndex,
   isPlaying,
   playbackSpeed,
+  repeatMode,
+  onToggleRepeat,
   onTogglePlay,
   onNextSentence,
   onPrevSentence,
@@ -24,12 +25,13 @@ export default function PlaybackPanel({
   onSelectSentence
 }) {
   const currentSentence = doc.sentences[activeSentenceIndex] || "No sentence loaded";
-  const progressPercent = Math.round(((activeSentenceIndex + 1) / doc.sentences.length) * 100) || 0;
+  const totalSentences = doc.sentences.length;
+  const progressPercent = Math.round(((activeSentenceIndex + 1) / totalSentences) * 100) || 0;
 
   return (
-    <div className="flex flex-col h-full space-y-4">
+    <div className="flex flex-col h-full space-y-4 animate-page-reveal">
       {/* Primary Focus Card (Arm's-Length Legibility) */}
-      <div className="flex-1 bg-cream-50 rounded-2xl border-2 border-indigo-pen/10 shadow-page p-6 sm:p-8 flex flex-col justify-between relative overflow-hidden">
+      <div className="flex-1 bg-cream-50 rounded-3xl border-2 border-indigo-pen/10 shadow-page p-6 sm:p-8 flex flex-col justify-between relative overflow-hidden">
         {/* Subtle decorative background watermark */}
         <div className="absolute top-4 right-4 text-cream-300 pointer-events-none select-none font-serif text-8xl font-bold opacity-30">
           {activeSentenceIndex + 1}
@@ -38,53 +40,79 @@ export default function PlaybackPanel({
         {/* Top meta row */}
         <div className="flex items-center justify-between z-10">
           <div className="flex items-center gap-2">
-            <span className="px-2.5 py-1 rounded-full bg-highlighter text-indigo-deep text-xs font-bold font-mono tracking-tight shadow-sm">
+            <span className="px-3 py-1 rounded-full bg-highlighter text-indigo-deep text-xs font-bold font-mono tracking-tight shadow-sm flex items-center gap-1.5">
+              <span className={`w-2 h-2 rounded-full ${isPlaying ? 'bg-indigo-deep animate-ping' : 'bg-indigo-deep'}`} />
               NOW READING
             </span>
             <span className="text-xs font-mono font-medium text-indigo-muted">
-              Sentence {activeSentenceIndex + 1} of {doc.sentences.length}
+              Sentence {activeSentenceIndex + 1} of {totalSentences}
             </span>
           </div>
 
           <div className="flex items-center gap-2">
-            <span className="text-xs font-mono text-indigo-pen bg-cream-200 px-2 py-0.5 rounded border border-cream-300">
-              {progressPercent}% Complete
+            {/* Loop active sentence */}
+            <button
+              onClick={onToggleRepeat}
+              className={`px-2.5 py-1 rounded-lg text-xs font-mono font-semibold border transition-all ${
+                repeatMode 
+                  ? 'bg-amber-100 text-amber-900 border-amber-300 shadow-sm' 
+                  : 'bg-cream-200 text-indigo-muted border-cream-300 hover:text-indigo-deep'
+              }`}
+              title="Repeat this sentence indefinitely until you write it down (T)"
+            >
+              <Repeat className="w-3.5 h-3.5 inline mr-1" />
+              {repeatMode ? 'Looping' : 'Loop'}
+            </button>
+
+            <span className="text-xs font-mono text-indigo-pen bg-cream-200 px-2.5 py-1 rounded-lg border border-cream-300">
+              {progressPercent}%
             </span>
           </div>
         </div>
 
-        {/* Big high-contrast sentence display */}
+        {/* Big high-contrast sentence display with calm transition on change */}
         <div className="my-auto py-6 z-10">
-          <p className="font-serif text-2xl sm:text-3xl md:text-4xl font-medium text-indigo-deep leading-snug tracking-tight">
+          <p 
+            key={activeSentenceIndex} 
+            className="font-serif text-2xl sm:text-3xl md:text-4xl font-medium text-indigo-deep leading-snug tracking-tight animate-sentence-focus"
+          >
             “{currentSentence}”
           </p>
           <div className="mt-4 flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse" />
             <span className="text-xs font-sans text-indigo-muted italic">
-              Focus is locked. Audio will speak this sentence until completed.
+              {isPlaying 
+                ? "Speaking aloud... Hands on your notebook." 
+                : "Paused. Tap Spacebar or click Read Aloud to resume."}
             </span>
           </div>
         </div>
 
-        {/* Progress Bar with Sentence Nodes */}
+        {/* Scrubber slider for instant navigation across sentences */}
         <div className="space-y-2 z-10 pt-4 border-t border-cream-300">
-          <div className="w-full bg-cream-200 rounded-full h-2 overflow-hidden">
-            <div 
-              className="bg-indigo-pen h-2 rounded-full transition-all duration-300"
-              style={{ width: `${progressPercent}%` }}
-            />
+          <div className="flex items-center justify-between text-[11px] font-mono text-indigo-muted">
+            <span>Sentence 1</span>
+            <span>Sentence {activeSentenceIndex + 1} of {totalSentences}</span>
+            <span>Sentence {totalSentences}</span>
           </div>
+          <input
+            type="range"
+            min="0"
+            max={totalSentences - 1}
+            value={activeSentenceIndex}
+            onChange={(e) => onSelectSentence(Number(e.target.value))}
+            className="w-full accent-indigo-pen cursor-pointer h-2 bg-cream-200 rounded-lg"
+          />
         </div>
       </div>
 
-      {/* Playback Control Deck */}
-      <div className="bg-cream-50 rounded-2xl border border-cream-300 shadow-notebook p-5 space-y-4">
+      {/* Playback Control Deck with Tactile Buttons */}
+      <div className="bg-cream-50 rounded-3xl border border-cream-300 shadow-notebook p-5 space-y-4">
         {/* Main Transport Buttons */}
         <div className="flex items-center justify-center gap-3 sm:gap-4">
           <button
             onClick={onRestartSentence}
-            className="p-3 rounded-xl bg-cream-200 hover:bg-cream-300 text-indigo-pen border border-cream-400 transition-all active:scale-95"
-            title="Repeat current sentence (R)"
+            className="w-12 h-12 rounded-2xl bg-cream-200 hover:bg-cream-300 text-indigo-pen border border-cream-400 flex items-center justify-center transition-all active:scale-95 shadow-sm"
+            title="Repeat current sentence from start (R)"
           >
             <RotateCcw className="w-5 h-5" />
           </button>
@@ -92,7 +120,7 @@ export default function PlaybackPanel({
           <button
             onClick={onPrevSentence}
             disabled={activeSentenceIndex === 0}
-            className="p-3 rounded-xl bg-cream-200 hover:bg-cream-300 disabled:opacity-40 disabled:hover:bg-cream-200 text-indigo-pen border border-cream-400 transition-all active:scale-95"
+            className="w-12 h-12 rounded-2xl bg-cream-200 hover:bg-cream-300 disabled:opacity-30 text-indigo-pen border border-cream-400 flex items-center justify-center transition-all active:scale-95 shadow-sm"
             title="Previous sentence (Left Arrow)"
           >
             <SkipBack className="w-5 h-5" />
@@ -101,7 +129,7 @@ export default function PlaybackPanel({
           {/* Primary Big Play/Pause Button */}
           <button
             onClick={onTogglePlay}
-            className="flex items-center justify-center gap-2 px-8 py-4 rounded-2xl bg-indigo-pen hover:bg-indigo-deep text-cream-50 font-bold shadow-lg shadow-indigo-pen/20 transition-all active:scale-95 ring-4 ring-cream-300 hover:ring-highlighter"
+            className="flex-1 max-w-[220px] h-14 rounded-2xl bg-indigo-pen hover:bg-indigo-deep text-cream-50 font-bold flex items-center justify-center gap-2 shadow-lg shadow-indigo-pen/20 transition-all active:scale-95 ring-4 ring-cream-300 hover:ring-highlighter"
             title="Play / Pause (Spacebar)"
           >
             {isPlaying ? (
@@ -119,15 +147,15 @@ export default function PlaybackPanel({
 
           <button
             onClick={onNextSentence}
-            disabled={activeSentenceIndex >= doc.sentences.length - 1}
-            className="p-3 rounded-xl bg-cream-200 hover:bg-cream-300 disabled:opacity-40 disabled:hover:bg-cream-200 text-indigo-pen border border-cream-400 transition-all active:scale-95"
+            disabled={activeSentenceIndex >= totalSentences - 1}
+            className="w-12 h-12 rounded-2xl bg-cream-200 hover:bg-cream-300 disabled:opacity-30 text-indigo-pen border border-cream-400 flex items-center justify-center transition-all active:scale-95 shadow-sm"
             title="Next sentence (Right Arrow)"
           >
             <SkipForward className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Speed Rate Pill Selector */}
+        {/* Speed Rate Badges */}
         <div className="flex items-center justify-between pt-2 border-t border-cream-200 text-xs">
           <div className="flex items-center gap-1.5 text-indigo-muted font-medium">
             <Volume2 className="w-4 h-4 text-indigo-pen" />
@@ -139,7 +167,7 @@ export default function PlaybackPanel({
               <button
                 key={speed}
                 onClick={() => onChangeSpeed(speed)}
-                className={`px-2.5 py-1 rounded-lg font-mono font-semibold transition-all ${
+                className={`px-3 py-1 rounded-xl font-mono font-semibold transition-all ${
                   playbackSpeed === speed
                     ? 'bg-indigo-pen text-cream-50 shadow-sm'
                     : 'bg-cream-200 hover:bg-cream-300 text-indigo-pen border border-cream-300'

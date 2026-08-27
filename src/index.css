@@ -41,17 +41,77 @@
   line-height: 32px;
 }
 
-/* Highlighter active sentence sweep */
+/* Phase 5: Signature Highlighter Sweep Animation */
+@keyframes highlighter-sweep {
+  0% {
+    background-size: 0% 100%;
+  }
+  100% {
+    background-size: 100% 100%;
+  }
+}
+
 .active-sentence-highlight {
-  background: linear-gradient(120deg, #FEF08A 0%, #FDE047 100%);
-  box-shadow: 0 0 0 3px #FEF08A, 0 2px 4px rgba(234, 179, 8, 0.15);
-  border-radius: 4px;
+  background-image: linear-gradient(120deg, rgba(254, 240, 138, 0.95) 0%, rgba(253, 224, 71, 0.95) 100%);
+  background-repeat: no-repeat;
+  background-size: 100% 100%;
+  animation: highlighter-sweep 0.35s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+  box-shadow: 0 0 0 3px rgba(254, 240, 138, 0.6), 0 2px 5px rgba(234, 179, 8, 0.15);
+  border-radius: 5px;
   position: relative;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Page load & parchment reveal */
+@keyframes page-unfold {
+  0% {
+    opacity: 0;
+    transform: translateY(8px) scale(0.995);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.animate-page-reveal {
+  animation: page-unfold 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Arm's length focus sentence transition */
+@keyframes focus-fade-in {
+  0% {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-sentence-focus {
+  animation: focus-fade-in 0.25s ease-out forwards;
 }
 
 /* Subtle focus outline for keyboard accessibility */
 :focus-visible {
   outline: 2px solid #1E293B;
   outline-offset: 2px;
+}
+
+/* Accessibility: Respect prefers-reduced-motion */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  
+  .active-sentence-highlight {
+    animation: none !important;
+    background-size: 100% 100% !important;
+  }
 }

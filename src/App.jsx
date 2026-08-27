@@ -11,12 +11,16 @@ import { sampleDocument } from './data/sampleDocument';
 import { extractTextFromPDF } from './utils/pdfExtractor';
 import { extractTextFromImage } from './utils/ocrExtractor';
 import { speechEngine } from './utils/speechEngine';
+import { audioFeedback } from './utils/audioFeedback';
+
+const SPEED_PRESETS = [0.8, 1.0, 1.25, 1.5, 1.75];
 
 export default function App() {
   const [currentDoc, setCurrentDoc] = useState(null);
   const [activeSentenceIndex, setActiveSentenceIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [playbackSpeed, setPlaybackSpeed] = useState(1.0);
+  const [repeatMode, setRepeatMode] = useState(false);
   const [selectedVoiceURI, setSelectedVoiceURI] = useState('');
   const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
   const [isVoiceModalOpen, setIsVoiceModalOpen] = useState(false);
@@ -27,22 +31,18 @@ export default function App() {
   const [currentFileProcessing, setCurrentFileProcessing] = useState(null);
   const [errorMessage, setErrorMessage] = useState(null);
 
-  // Refs for tracking current state inside callbacks
+  // Refs for tracking current state inside async callbacks
   const docRef = useRef(currentDoc);
   const activeIndexRef = useRef(activeSentenceIndex);
   const isPlayingRef = useRef(isPlaying);
+  const repeatModeRef = useRef(repeatMode);
+  const playbackSpeedRef = useRef(playbackSpeed);
 
-  useEffect(() => {
-    docRef.current = currentDoc;
-  }, [currentDoc]);
-
-  useEffect(() => {
-    activeIndexRef.current = activeSentenceIndex;
-  }, [activeSentenceIndex]);
-
-  useEffect(() => {
-    isPlayingRef.current = isPlaying;
-  }, [isPlaying]);
+  useEffect(() => { docRef.current = currentDoc; }, [currentDoc]);
+  useEffect(() => { activeIndexRef.current = activeSentenceIndex; }, [activeSentenceIndex]);
+  useEffect(() => { isPlayingRef.current = isPlaying; }, [isPlaying]);
+  useEffect(() => { repeatModeRef.current = repeatMode; }, [repeatMode]);
+  useEffect(() => { playbackSpeedRef.current = playbackSpeed; }, [playbackSpeed]);
 
   // Load sample document for instant preview
   const handleLoadSample = () => {
@@ -51,6 +51,7 @@ export default function App() {
     setActiveSentenceIndex(0);
     setIsPlaying(false);
     setErrorMessage(null);
+    audioFeedback.playResume();
   };
 
   // Reset / Change document
@@ -81,9 +82,15 @@ export default function App() {
       const doc = docRef.current;
       if (!doc || !isPlayingRef.current) return;
 
+      if (repeatModeRef.current) {
+        // Repeat mode active: replay current sentence
+        speakSentenceAtIndex(sentenceIndex);
+        return;
+      }
+
       const nextIndex = sentenceIndex + 1;
       if (nextIndex < doc.sentences.length) {
-        // Auto-advance to next sentence seamlessly
+        // Auto-advance to next sentence
         speakSentenceAtIndex(nextIndex);
       } else {
         // Finished last sentence
@@ -106,16 +113,19 @@ export default function App() {
     if (isPlayingRef.current) {
       speechEngine.stop();
       setIsPlaying(false);
+      audioFeedback.playPause();
     } else {
+      audioFeedback.playResume();
       speakSentenceAtIndex(activeIndexRef.current);
     }
   }, [speakSentenceAtIndex]);
 
-  // Next / Previous / Restart sentence handlers
+  // Next sentence
   const handleNextSentence = useCallback(() => {
     const doc = docRef.current;
     if (!doc) return;
     const nextIdx = Math.min(activeIndexRef.current + 1, doc.sentences.length - 1);
+    audioFeedback.playSkipForward();
     if (isPlayingRef.current) {
       speakSentenceAtIndex(nextIdx);
     } else {
@@ -123,10 +133,12 @@ export default function App() {
     }
   }, [speakSentenceAtIndex]);
 
+  // Previous sentence
   const handlePrevSentence = useCallback(() => {
     const doc = docRef.current;
     if (!doc) return;
     const prevIdx = Math.max(activeIndexRef.current - 1, 0);
+    audioFeedback.playSkipBack();
     if (isPlayingRef.current) {
       speakSentenceAtIndex(prevIdx);
     } else {
@@ -134,22 +146,40 @@ export default function App() {
     }
   }, [speakSentenceAtIndex]);
 
+  // Restart current sentence
   const handleRestartSentence = useCallback(() => {
+    audioFeedback.playSkipBack();
     speakSentenceAtIndex(activeIndexRef.current);
   }, [speakSentenceAtIndex]);
 
+  // Direct sentence jump from click or slider
   const handleSelectSentence = useCallback((idx) => {
+    audioFeedback.playSkipForward();
     speakSentenceAtIndex(idx);
   }, [speakSentenceAtIndex]);
 
+  // Toggle loop / repeat mode
+  const handleToggleRepeat = useCallback(() => {
+    setRepeatMode((prev) => !prev);
+    audioFeedback.playResume();
+  }, []);
+
+  // Speed adjustments
   const handleChangeSpeed = useCallback((speed) => {
-    setPlaybackSpeed(speed);
-    speechEngine.setRate(speed);
-    // If currently speaking, restart current sentence with new rate
+    const validSpeed = Number(speed);
+    setPlaybackSpeed(validSpeed);
+    speechEngine.setRate(validSpeed);
     if (isPlayingRef.current) {
       speakSentenceAtIndex(activeIndexRef.current);
     }
   }, [speakSentenceAtIndex]);
+
+  const handleCycleSpeed = useCallback(() => {
+    const currentIndex = SPEED_PRESETS.indexOf(playbackSpeedRef.current);
+    const nextIndex = (currentIndex + 1) % SPEED_PRESETS.length;
+    const newSpeed = SPEED_PRESETS[nextIndex];
+    handleChangeSpeed(newSpeed);
+  }, [handleChangeSpeed]);
 
   const handleSelectVoice = useCallback((voiceURI) => {
     setSelectedVoiceURI(voiceURI);
@@ -188,6 +218,7 @@ export default function App() {
       setCurrentDoc(resultDoc);
       setActiveSentenceIndex(0);
       setIsPlaying(false);
+      audioFeedback.playResume();
     } catch (err) {
       console.error("Extraction error in App:", err);
       setErrorMessage(err.message || "Failed to process document.");
@@ -197,24 +228,40 @@ export default function App() {
     }
   };
 
-  // Global Keyboard Shortcuts (Spacebar, Arrows, 'r', '?')
+  // Global Keyboard Shortcuts (Space, Arrows, J/K/L, R, T, [, ], M, ?)
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (['INPUT', 'TEXTAREA'].includes(e.target.tagName)) return;
 
+      const key = e.key.toLowerCase();
+
       if (e.code === 'Space') {
         e.preventDefault();
         handleTogglePlay();
-      } else if (e.code === 'ArrowRight') {
+      } else if (e.code === 'ArrowRight' || key === 'l') {
         e.preventDefault();
         handleNextSentence();
-      } else if (e.code === 'ArrowLeft') {
+      } else if (e.code === 'ArrowLeft' || key === 'j') {
         e.preventDefault();
         handlePrevSentence();
-      } else if (e.key.toLowerCase() === 'r') {
+      } else if (key === 'r' || key === 'k') {
         e.preventDefault();
         handleRestartSentence();
-      } else if (e.key === '?' || (e.metaKey && e.key === 'k') || (e.ctrlKey && e.key === 'k')) {
+      } else if (key === 't') {
+        e.preventDefault();
+        handleToggleRepeat();
+      } else if (key === '[') {
+        e.preventDefault();
+        const cur = playbackSpeedRef.current;
+        handleChangeSpeed(Math.max(0.6, Number((cur - 0.1).toFixed(2))));
+      } else if (key === ']') {
+        e.preventDefault();
+        const cur = playbackSpeedRef.current;
+        handleChangeSpeed(Math.min(2.0, Number((cur + 0.1).toFixed(2))));
+      } else if (key === 'm') {
+        e.preventDefault();
+        audioFeedback.enabled = !audioFeedback.enabled;
+      } else if (key === '?' || (e.metaKey && key === 'k') || (e.ctrlKey && key === 'k')) {
         e.preventDefault();
         setIsShortcutsOpen((prev) => !prev);
       } else if (e.code === 'Escape') {
@@ -226,7 +273,14 @@ export default function App() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleTogglePlay, handleNextSentence, handlePrevSentence, handleRestartSentence]);
+  }, [
+    handleTogglePlay, 
+    handleNextSentence, 
+    handlePrevSentence, 
+    handleRestartSentence,
+    handleToggleRepeat,
+    handleChangeSpeed
+  ]);
 
   return (
     <div className="min-h-screen flex flex-col bg-cream-100 text-indigo-pen font-sans antialiased selection:bg-highlighter-glow selection:text-indigo-deep">
@@ -248,6 +302,8 @@ export default function App() {
             activeSentenceIndex={activeSentenceIndex}
             isPlaying={isPlaying}
             playbackSpeed={playbackSpeed}
+            repeatMode={repeatMode}
+            onToggleRepeat={handleToggleRepeat}
             onSelectSentence={handleSelectSentence}
             onTogglePlay={handleTogglePlay}
             onNextSentence={handleNextSentence}
@@ -270,9 +326,14 @@ export default function App() {
           activeSentenceIndex={activeSentenceIndex}
           isPlaying={isPlaying}
           playbackSpeed={playbackSpeed}
+          repeatMode={repeatMode}
+          onToggleRepeat={handleToggleRepeat}
           onTogglePlay={handleTogglePlay}
           onNextSentence={handleNextSentence}
           onPrevSentence={handlePrevSentence}
+          onRestartSentence={handleRestartSentence}
+          onCycleSpeed={handleCycleSpeed}
+          onOpenVoiceModal={() => setIsVoiceModalOpen(true)}
         />
       )}
 
@@ -286,7 +347,7 @@ export default function App() {
         onChangeSpeed={handleChangeSpeed}
       />
 
-      {/* Phase 2: On-Brand Extraction & OCR Loading Overlay */}
+      {/* On-Brand Extraction & OCR Loading Overlay */}
       {isExtracting && (
         <ExtractionLoader
           progress={extractionProgress}
