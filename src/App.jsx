@@ -5,6 +5,8 @@ import SplitView from './components/SplitView';
 import FloatingControls from './components/FloatingControls';
 import KeyboardShortcutsModal from './components/KeyboardShortcutsModal';
 import VoiceSettingsModal from './components/VoiceSettingsModal';
+import InlineTextEditorModal from './components/InlineTextEditorModal';
+import PhotoOrientationModal from './components/PhotoOrientationModal';
 import ExtractionLoader from './components/ExtractionLoader';
 import ErrorAlert from './components/ErrorAlert';
 import { sampleDocument } from './data/sampleDocument';
@@ -22,8 +24,13 @@ export default function App() {
   const [playbackSpeed, setPlaybackSpeed] = useState(1.0);
   const [repeatMode, setRepeatMode] = useState(false);
   const [selectedVoiceURI, setSelectedVoiceURI] = useState('');
+  
+  // Modals
   const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
   const [isVoiceModalOpen, setIsVoiceModalOpen] = useState(false);
+  const [isTextEditorOpen, setIsTextEditorOpen] = useState(false);
+  const [isOrientationModalOpen, setIsOrientationModalOpen] = useState(false);
+  const [pendingImageForRotation, setPendingImageForRotation] = useState(null);
 
   // Extraction & OCR state
   const [isExtracting, setIsExtracting] = useState(false);
@@ -186,10 +193,8 @@ export default function App() {
     speechEngine.setVoice(voiceURI);
   }, []);
 
-  // Real File Upload & OCR Extraction Pipeline
-  const handleFileUpload = async (file) => {
-    if (!file) return;
-
+  // Process Document File
+  const processDocument = async (file) => {
     speechEngine.stop();
     setCurrentFileProcessing(file);
     setIsExtracting(true);
@@ -228,7 +233,35 @@ export default function App() {
     }
   };
 
-  // Global Keyboard Shortcuts (Space, Arrows, J/K/L, R, T, [, ], M, ?)
+  // Upload handler with Photo Orientation Intercept (Phase 7)
+  const handleFileUpload = (file) => {
+    if (!file) return;
+    const isImg = file.type.startsWith('image/') || /\.(png|jpe?g|webp|bmp)$/i.test(file.name || '');
+
+    if (isImg) {
+      // Allow student to confirm orientation before OCR
+      setPendingImageForRotation(file);
+      setIsOrientationModalOpen(true);
+    } else {
+      processDocument(file);
+    }
+  };
+
+  // Phase 7: Apply Manual Text Corrections & Re-sync Audio
+  const handleSaveEditedText = ({ rawText, sentences }) => {
+    if (!currentDoc) return;
+    speechEngine.stop();
+    setCurrentDoc((prev) => ({
+      ...prev,
+      rawText,
+      sentences: sentences.length > 0 ? sentences : [rawText]
+    }));
+    setActiveSentenceIndex(0);
+    setIsPlaying(false);
+    audioFeedback.playResume();
+  };
+
+  // Global Keyboard Shortcuts (Space, Arrows, J/K/L, R, T, E, [, ], M, ?)
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (['INPUT', 'TEXTAREA'].includes(e.target.tagName)) return;
@@ -250,6 +283,9 @@ export default function App() {
       } else if (key === 't') {
         e.preventDefault();
         handleToggleRepeat();
+      } else if (key === 'e' && currentDoc) {
+        e.preventDefault();
+        setIsTextEditorOpen((prev) => !prev);
       } else if (key === '[') {
         e.preventDefault();
         const cur = playbackSpeedRef.current;
@@ -267,6 +303,8 @@ export default function App() {
       } else if (e.code === 'Escape') {
         setIsShortcutsOpen(false);
         setIsVoiceModalOpen(false);
+        setIsTextEditorOpen(false);
+        setIsOrientationModalOpen(false);
         setErrorMessage(null);
       }
     };
@@ -274,6 +312,7 @@ export default function App() {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [
+    currentDoc,
     handleTogglePlay, 
     handleNextSentence, 
     handlePrevSentence, 
@@ -310,6 +349,7 @@ export default function App() {
             onPrevSentence={handlePrevSentence}
             onRestartSentence={handleRestartSentence}
             onChangeSpeed={handleChangeSpeed}
+            onOpenTextEditor={() => setIsTextEditorOpen(true)}
           />
         ) : (
           <EmptyState
@@ -347,6 +387,30 @@ export default function App() {
         onChangeSpeed={handleChangeSpeed}
       />
 
+      {/* Phase 7: Inline Manual Text & OCR Correction Modal */}
+      <InlineTextEditorModal
+        isOpen={isTextEditorOpen}
+        onClose={() => setIsTextEditorOpen(false)}
+        initialText={currentDoc?.rawText || ''}
+        docTitle={currentDoc?.title}
+        onSave={handleSaveEditedText}
+      />
+
+      {/* Phase 7: Photo Orientation Pre-Processing Modal */}
+      <PhotoOrientationModal
+        isOpen={isOrientationModalOpen}
+        onClose={() => {
+          setIsOrientationModalOpen(false);
+          setPendingImageForRotation(null);
+        }}
+        imageFile={pendingImageForRotation}
+        onProcessRotatedImage={(file) => {
+          setIsOrientationModalOpen(false);
+          setPendingImageForRotation(null);
+          processDocument(file);
+        }}
+      />
+
       {/* On-Brand Extraction & OCR Loading Overlay */}
       {isExtracting && (
         <ExtractionLoader
@@ -362,7 +426,7 @@ export default function App() {
         <ErrorAlert
           error={errorMessage}
           onClose={() => setErrorMessage(null)}
-          onRetry={() => currentFileProcessing && handleFileUpload(currentFileProcessing)}
+          onRetry={() => currentFileProcessing && processDocument(currentFileProcessing)}
         />
       )}
 

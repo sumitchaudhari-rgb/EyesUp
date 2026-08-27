@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { FileText, ZoomIn, ZoomOut, PenTool } from 'lucide-react';
+import { FileText, ZoomIn, ZoomOut, Edit3, ChevronLeft, ChevronRight } from 'lucide-react';
 
 export default function DocumentViewer({
   doc,
   activeSentenceIndex,
   isPlaying,
-  onSelectSentence
+  onSelectSentence,
+  onOpenTextEditor
 }) {
   const [fontSize, setFontSize] = useState(18); // px
   const activeSentenceRef = useRef(null);
@@ -42,27 +43,40 @@ export default function DocumentViewer({
           </span>
         </div>
 
-        {/* Font scaling controls */}
-        <div className="flex items-center gap-1.5 flex-shrink-0">
+        {/* Action buttons: Edit OCR Text & Font Scaling */}
+        <div className="flex items-center gap-2 flex-shrink-0">
+          {/* Edit OCR Text Button */}
           <button
-            onClick={decreaseFont}
-            className="p-1.5 rounded-lg hover:bg-cream-200 text-indigo-muted hover:text-indigo-deep transition-colors active:scale-95 focus-visible:ring-2 focus-visible:ring-indigo-pen"
-            title="Decrease font size"
-            aria-label="Decrease font size"
+            onClick={onOpenTextEditor}
+            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-cream-200 hover:bg-cream-300 text-indigo-pen text-xs font-semibold border border-cream-400 transition-colors shadow-sm active:scale-95"
+            title="Edit extracted text & correct OCR typos"
           >
-            <ZoomOut className="w-4 h-4" />
+            <Edit3 className="w-3.5 h-3.5 text-indigo-pen" />
+            <span className="hidden sm:inline">Edit Text</span>
           </button>
-          <span className="text-xs font-mono text-indigo-muted w-8 text-center" aria-live="polite">
-            {fontSize}px
-          </span>
-          <button
-            onClick={increaseFont}
-            className="p-1.5 rounded-lg hover:bg-cream-200 text-indigo-muted hover:text-indigo-deep transition-colors active:scale-95 focus-visible:ring-2 focus-visible:ring-indigo-pen"
-            title="Increase font size"
-            aria-label="Increase font size"
-          >
-            <ZoomIn className="w-4 h-4" />
-          </button>
+
+          {/* Font zoom controls */}
+          <div className="flex items-center gap-1">
+            <button
+              onClick={decreaseFont}
+              className="p-1.5 rounded-lg hover:bg-cream-200 text-indigo-muted hover:text-indigo-deep transition-colors active:scale-95 focus-visible:ring-2 focus-visible:ring-indigo-pen"
+              title="Decrease font size"
+              aria-label="Decrease font size"
+            >
+              <ZoomOut className="w-4 h-4" />
+            </button>
+            <span className="text-xs font-mono text-indigo-muted w-8 text-center" aria-live="polite">
+              {fontSize}px
+            </span>
+            <button
+              onClick={increaseFont}
+              className="p-1.5 rounded-lg hover:bg-cream-200 text-indigo-muted hover:text-indigo-deep transition-colors active:scale-95 focus-visible:ring-2 focus-visible:ring-indigo-pen"
+              title="Increase font size"
+              aria-label="Increase font size"
+            >
+              <ZoomIn className="w-4 h-4" />
+            </button>
+          </div>
         </div>
       </div>
 

@@ -15,9 +15,9 @@ export default function SplitView({
   onNextSentence,
   onPrevSentence,
   onRestartSentence,
-  onChangeSpeed
+  onChangeSpeed,
+  onOpenTextEditor
 }) {
-  // Mobile / Portrait Tablet view tab: 'split' | 'reader' | 'focus'
   const [mobileTab, setMobileTab] = useState('split');
 
   return (
@@ -78,6 +78,7 @@ export default function SplitView({
             activeSentenceIndex={activeSentenceIndex}
             isPlaying={isPlaying}
             onSelectSentence={onSelectSentence}
+            onOpenTextEditor={onOpenTextEditor}
           />
         </div>
 
